@@ -1,4 +1,4 @@
-<p align="center"><img src="unraid/satisfactory-map-renderer.png" width="96" alt=""></p>
+<p align="center"><img src="docs/logo.png" width="96" alt=""></p>
 
 # Satisfactory Map Renderer
 
