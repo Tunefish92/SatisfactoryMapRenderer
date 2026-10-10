@@ -36,7 +36,9 @@ Reads saves from Update 5 up to 1.2.4.
 |---|---|
 | ![A factory zoomed in, with the details of a smelter](docs/screenshots/factory.jpg) | ![Dark theme with the object counts](docs/screenshots/statistics-dark.jpg) |
 
-## Quick start
+## Installation
+
+### Docker Compose
 
 Save this as `docker-compose.yml`, set a password, and run `docker compose up -d`:
 
@@ -57,25 +59,59 @@ services:
 ```
 
 Open `http://localhost:8080/`, click **Admin login** in the *Save game* tab of the side panel, and choose your save
-game. The image is also on Docker Hub as `tunefish92/satisfactorymaprenderer`, and there is a template for
-**Unraid** in [`unraid/`](unraid/).
+game. The image is also on Docker Hub as `tunefish92/satisfactorymaprenderer`.
 
-To build from this repository instead: `cp admin.env.example admin.env`, set the password in it, and run
-`docker compose up -d --build`. Optional settings (port, data folder) go into `.env`, see `.env.example`.
+### The admin password
 
-**Which characters may the password contain?** Any, with at least 8 of them; it is compared exactly, including
-upper and lower case and spaces. The only pitfall is Docker Compose itself, which reads `$` in `docker-compose.yml`
-and `.env` as the start of a variable: `pa$word` silently becomes `pa`. Either write `$$` for every `$` there, or
-do as this repository's compose file does and keep the password in its own file that Compose passes on unchanged
-(needs Docker Compose 2.30 or newer):
+The password may contain **any characters** and needs at least 8 of them. It is compared exactly: upper and lower
+case matter, and so do spaces at the beginning or end.
 
-```yaml
-    env_file:
-      - path: admin.env      # contains the line: SMR_ADMIN_PASSWORD=your password, exactly as it is
-        format: raw
+**Mind the `$` in Docker Compose.** Compose reads `$` in `docker-compose.yml` and in `.env` as the start of a
+variable and changes the password without telling you. The login then fails with the password you believe you set:
+
+| Written in `docker-compose.yml` or `.env` | Password the app gets |
+|---|---|
+| `pa$word123` | `pa` |
+| `pa${word}123` | `pa123` |
+| `pa$$word123` | `pa$word123` |
+
+There are two ways around it:
+
+1. Write `$$` for every `$` of the password, as in the last row.
+2. Keep the password in its own file, which Compose passes on unchanged (needs Docker Compose 2.30 or newer).
+   Create `admin.env` next to `docker-compose.yml`:
+
+   ```
+   SMR_ADMIN_PASSWORD=your password, exactly as it is
+   ```
+
+   and replace the `environment:` entry for the password with:
+
+   ```yaml
+       env_file:
+         - path: admin.env
+           format: raw
+   ```
+
+   Everything after the `=` is the password: no quotes are needed, and `$`, `#`, quotes and spaces are ordinary
+   characters there.
+
+With `docker run -e` and on Unraid, Compose is not involved; quote the password for your shell as usual.
+
+### Unraid
+
+[`unraid/satisfactory-map-renderer.xml`](unraid/satisfactory-map-renderer.xml) is a template for Unraid's Docker
+page. It asks for the port, the data folder, the admin password and, optionally, the game folder.
+
+### From this repository
+
+```
+cp admin.env.example admin.env      # put the admin password into it
+docker compose up -d --build
 ```
 
-On Unraid and with `docker run -e` the password is not touched by Compose; quote it for your shell as usual.
+The repository's compose file already uses the `admin.env` approach from above. Optional settings (port, data
+folder, zoom) go into `.env`; see `.env.example`.
 
 ## Choosing the save game
 
@@ -109,7 +145,7 @@ the *Map* dropdown).
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SMR_ADMIN_PASSWORD` | – | **Required**, at least 8 characters, any characters (see the note on `$` above). Only admins can choose or refresh the save game. Five wrong passwords block the login for a minute. |
+| `SMR_ADMIN_PASSWORD` | – | **Required**, at least 8 characters, any characters (see [The admin password](#the-admin-password)). Only admins can choose or refresh the save game. Five wrong passwords block the login for a minute. |
 | `SMR_MAX_ZOOM` | `9` | Highest rendered zoom level (3–9). 9 is about 6 cm per pixel; each level less renders about four times faster and needs a quarter of the disk space. |
 | `PUID` / `PGID` | `1000` | Owner of the data folder; the app runs as this user. |
 
