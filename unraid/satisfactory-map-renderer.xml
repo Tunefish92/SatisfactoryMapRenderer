@@ -16,7 +16,7 @@ The save game is chosen in the web UI by an admin: upload a .sav file, fetch it 
 Reads saves from Update 5 up to 1.2.4. Works out of the box: the game's icons, names and in-game map (from Satisfactory 1.2.4) are included.</Overview>
   <Category>GameServers: Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Tunefish92/unraid-templates/main/satisfactory-map-renderer.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/Tunefish92/unraid-templates/main/templates/satisfactory-map-renderer.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/unraid/satisfactory-map-renderer.png</Icon>
   <License>MIT</License>
   <Screenshot>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/overview.jpg</Screenshot>
