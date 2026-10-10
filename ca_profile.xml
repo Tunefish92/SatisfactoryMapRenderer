@@ -1,6 +1,0 @@
-<CommunityApplications>
-  <Profile>Satisfactory Map Renderer is a self-hosted web app that shows an interactive map of a Satisfactory save game, loaded from a file, a running dedicated server or over SSH. This repository contains its source and its Unraid template. Ask questions and get help in GitHub Discussions (https://github.com/Tunefish92/SatisfactoryMapRenderer/discussions); report bugs as GitHub issues.</Profile>
-  <Icon>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/unraid/satisfactory-map-renderer.png</Icon>
-  <WebPage>https://github.com/Tunefish92/SatisfactoryMapRenderer</WebPage>
-  <Forum>https://github.com/Tunefish92/SatisfactoryMapRenderer/discussions</Forum>
-</CommunityApplications>

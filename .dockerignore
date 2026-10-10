@@ -27,6 +27,5 @@ docker-compose*.yml
 *.md
 .gitignore
 .dockerignore
-ca_profile.xml
 LICENSE
 .gitattributes

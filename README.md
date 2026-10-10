@@ -101,8 +101,10 @@ With `docker run -e` and on Unraid, Compose is not involved; quote the password 
 
 ### Unraid
 
-[`unraid/satisfactory-map-renderer.xml`](unraid/satisfactory-map-renderer.xml) is a template for Unraid's Docker
-page. It asks for the port, the data folder, the admin password and, optionally, the game folder.
+The template for Unraid's Community Applications is kept in
+[Tunefish92/unraid-templates](https://github.com/Tunefish92/unraid-templates) (a copy is in
+[`unraid/`](unraid/satisfactory-map-renderer.xml)). It asks for the port, the data folder, the admin password and,
+optionally, the game folder.
 
 ### From this repository
 
