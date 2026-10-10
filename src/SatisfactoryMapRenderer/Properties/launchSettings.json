@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Serve": {
+      "commandName": "Project",
+      "commandLineArgs": "--serve 8000 -o output/map",
+      "workingDirectory": "$(SolutionDir)"
+    }
+  }
+}

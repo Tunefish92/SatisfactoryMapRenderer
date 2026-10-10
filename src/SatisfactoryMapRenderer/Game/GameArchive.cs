@@ -1,0 +1,183 @@
+using AssetRipper.TextureDecoder.Bc;
+using AssetRipper.TextureDecoder.Rgb.Formats;
+using CUE4Parse.Compression;
+using CUE4Parse.FileProvider;
+using CUE4Parse.MappingsProvider.Usmap;
+using CUE4Parse.UE4.Assets.Exports;
+using CUE4Parse.UE4.Assets.Exports.Texture;
+using CUE4Parse.UE4.Versions;
+using SkiaSharp;
+
+namespace SatisfactoryMapRenderer.Game;
+
+/// <summary>Read access to the installed game's IoStore archives via CUE4Parse.</summary>
+public sealed class GameArchive : IDisposable
+{
+    /// <summary>A small texture every game version has; used to verify the engine version guess.</summary>
+    private const string ProbeTexture = "/Game/FactoryGame/Interface/UI/Assets/Map/MapCompass_Icon_player.MapCompass_Icon_player";
+
+    private static readonly EGame[] EngineVersions =
+        [EGame.GAME_UE5_6, EGame.GAME_UE5_5, EGame.GAME_UE5_7, EGame.GAME_UE5_4, EGame.GAME_UE5_3, EGame.GAME_UE5_2];
+
+    private readonly DefaultFileProvider _provider;
+
+    private GameArchive(DefaultFileProvider provider, EGame engine)
+    {
+        _provider = provider;
+        Engine = engine;
+    }
+
+    public EGame Engine { get; }
+
+    public IEnumerable<string> Files => _provider.Files.Keys;
+
+    /// <param name="cacheDirectory">Holds the Oodle library and the corrected type mappings.</param>
+    /// <param name="oodleLibrary">Use this Oodle DLL instead of the cached/downloaded one.</param>
+    public static GameArchive Open(GameInstallation game, string cacheDirectory, string? oodleLibrary, Action<string> log)
+    {
+        Directory.CreateDirectory(cacheDirectory);
+        InitializeOodle(cacheDirectory, oodleLibrary, log);
+
+        var mappings = LoadMappings(game, cacheDirectory, log);
+        foreach (var engine in EngineVersions)
+        {
+            var provider = new DefaultFileProvider(game.PaksDirectory, SearchOption.TopDirectoryOnly,
+                new VersionContainer(engine), StringComparer.OrdinalIgnoreCase)
+            {
+                MappingsContainer = mappings,
+            };
+            provider.Initialize();
+            provider.Mount();
+            var archive = new GameArchive(provider, engine);
+            if (archive.TryLoadTexture(ProbeTexture, 64) is { } probe)
+            {
+                probe.Dispose();
+                return archive;
+            }
+            archive.Dispose();
+        }
+        throw new InvalidOperationException("The game's assets could not be read with any known Unreal Engine version.");
+    }
+
+    private static void InitializeOodle(string cacheDirectory, string? oodleLibrary, Action<string> log)
+    {
+        if (OodleHelper.Instance is not null)
+            return;
+        string path = oodleLibrary ?? Path.Combine(cacheDirectory, OodleHelper.OodleFileName);
+        if (!File.Exists(path))
+        {
+            if (oodleLibrary is not null)
+                throw new FileNotFoundException("Oodle library not found.", oodleLibrary);
+            log("Downloading the Oodle decompression library (one-time, from github.com/WorkingRobot/OodleUE)...");
+            string? downloaded = path;
+            if (!OodleHelper.DownloadOodleDll(ref downloaded) || downloaded is null)
+                throw new InvalidOperationException("Could not download the Oodle library. Pass one with --oodle <path>.");
+            path = downloaded;
+        }
+        OodleHelper.Initialize(path);
+    }
+
+    private static FileUsmapTypeMappingsProvider LoadMappings(GameInstallation game, string cacheDirectory, Action<string> log)
+    {
+        try
+        {
+            return new FileUsmapTypeMappingsProvider(game.MappingsFile, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            string fixedPath = Path.Combine(cacheDirectory, "FactoryGame.fixed.usmap");
+            File.WriteAllBytes(fixedPath, UsmapFixer.Fix(File.ReadAllBytes(game.MappingsFile), out int count));
+            log($"  Repaired the game's type mappings ({count} optional properties).");
+            return new FileUsmapTypeMappingsProvider(fixedPath, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>"/Game/Path/Asset.Object" → "FactoryGame/Content/Path/Asset.Object".</summary>
+    public static string ToProviderPath(string objectPath) =>
+        objectPath.StartsWith("/Game/", StringComparison.OrdinalIgnoreCase) ? "FactoryGame/Content/" + objectPath["/Game/".Length..] : objectPath;
+
+    /// <summary>"/Game/X/Desc_Foo.Desc_Foo_C" → the package file "FactoryGame/Content/X/Desc_Foo.uasset".</summary>
+    public static string PackageFile(string objectPath)
+    {
+        string path = ToProviderPath(objectPath);
+        int dot = path.LastIndexOf('.');
+        return (dot > path.LastIndexOf('/') ? path[..dot] : path) + ".uasset";
+    }
+
+    public IEnumerable<UObject> LoadExports(string packageFile) => _provider.LoadPackage(packageFile).GetExports();
+
+    public UObject? TryLoadObject(string objectPath)
+    {
+        try
+        {
+            return _provider.LoadPackageObject(ToProviderPath(objectPath));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Loads a texture and decodes the largest mip not exceeding <paramref name="maxSize"/> (0 = full size).</summary>
+    public SKBitmap? TryLoadTexture(string objectPath, int maxSize)
+    {
+        try
+        {
+            return TryLoadObject(objectPath) is UTexture texture ? Decode(texture, maxSize) : null;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    public static SKBitmap? Decode(UTexture texture, int maxSize)
+    {
+        var mip = maxSize > 0 ? texture.GetMipByMaxSize(maxSize) ?? texture.GetFirstMip() : texture.GetFirstMip();
+        byte[]? data = mip?.BulkData?.Data;
+        if (mip is null || data is null)
+            return null;
+
+        int width = mip.SizeX, height = mip.SizeY;
+        int blockWidth = (width + 3) / 4 * 4, blockHeight = (height + 3) / 4 * 4;
+        byte[] bgra;
+        switch (texture.Format)
+        {
+            case EPixelFormat.PF_DXT1: Bc1.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
+            case EPixelFormat.PF_DXT3: Bc2.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
+            case EPixelFormat.PF_DXT5: Bc3.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
+            case EPixelFormat.PF_BC4: Bc4.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
+            case EPixelFormat.PF_BC5: Bc5.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
+            case EPixelFormat.PF_BC7: Bc7.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
+            case EPixelFormat.PF_B8G8R8A8:
+                bgra = data;
+                blockWidth = width;
+                break;
+            case EPixelFormat.PF_R8G8B8A8:
+                bgra = (byte[])data.Clone();
+                for (int i = 0; i + 3 < bgra.Length; i += 4)
+                    (bgra[i], bgra[i + 2]) = (bgra[i + 2], bgra[i]);
+                blockWidth = width;
+                break;
+            case EPixelFormat.PF_G8:
+                bgra = new byte[width * height * 4];
+                for (int i = 0; i < width * height; i++)
+                {
+                    bgra[i * 4] = bgra[i * 4 + 1] = bgra[i * 4 + 2] = data[i];
+                    bgra[i * 4 + 3] = 255;
+                }
+                blockWidth = width;
+                break;
+            default:
+                return null;
+        }
+
+        var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+        var pixels = bitmap.GetPixelSpan();
+        for (int y = 0; y < height; y++)
+            bgra.AsSpan(y * blockWidth * 4, width * 4).CopyTo(pixels.Slice(y * width * 4, width * 4));
+        return bitmap;
+    }
+
+    public void Dispose() => _provider.Dispose();
+}

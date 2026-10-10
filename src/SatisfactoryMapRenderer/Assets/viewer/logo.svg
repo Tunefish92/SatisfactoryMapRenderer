@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Satisfactory Map Renderer">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <clipPath id="sheet">
+      <path d="M10 23 L24 18 L40 23 L54 18 V46 L40 51 L24 46 L10 51 Z"/>
+    </clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- folded map -->
+  <path d="M10 23 L24 18 L40 23 L54 18 V46 L40 51 L24 46 L10 51 Z" fill="#ffffff"/>
+  <g clip-path="url(#sheet)">
+    <path d="M24 18 L40 23 V51 L24 46 Z" fill="#dbe7fb"/>
+    <!-- conveyor belt running across the map -->
+    <path d="M6 41 L20 36 L30 43 L44 33 L58 38" fill="none" stroke="#f59e0b" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M10 23 L24 18 L40 23 L54 18 V46 L40 51 L24 46 L10 51 Z" fill="none" stroke="#12161f" stroke-opacity=".18" stroke-width="1" stroke-linejoin="round"/>
+  <!-- location pin -->
+  <path d="M32 9 a10 10 0 0 1 10 10 c0 7 -7.2 12.6 -10 17 c-2.8 -4.4 -10 -10 -10 -17 a10 10 0 0 1 10 -10 Z" fill="#12161f"/>
+  <circle cx="32" cy="19" r="4.2" fill="#f59e0b"/>
+</svg>

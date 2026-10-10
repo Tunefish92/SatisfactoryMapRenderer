@@ -1,0 +1,31 @@
+# Build output (rebuilt inside the image)
+**/bin/
+**/obj/
+**/TestResults/
+
+# Game assets, rendered maps and secrets: never part of the build context or the image
+gamedata/
+maps/
+output/
+map-data/
+**/*_map/
+**/*.sav
+.env
+.env.*
+
+# Not needed to build the image
+.git/
+.github/
+**/.vs/
+**/.vscode/
+**/*.user
+tests/
+unraid/
+docs/
+docker-compose*.yml
+*.md
+.gitignore
+.dockerignore
+ca_profile.xml
+LICENSE
+.gitattributes

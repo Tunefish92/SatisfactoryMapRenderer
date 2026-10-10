@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <title>Satisfactory Map</title>
+  <link rel="stylesheet" href="leaflet/leaflet.css">
+  <link rel="stylesheet" href="viewer.css">
+  <script>
+    // Applied before the first paint; "system" follows the browser's light/dark preference.
+    try { const t = JSON.parse(localStorage.getItem('smr:theme')); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch { /* storage unavailable */ }
+  </script>
+</head>
+<body>
+  <aside id="sidebar">
+    <header>
+      <img class="logo" src="logo.svg" width="30" height="30" alt="">
+      <h1 id="title">Satisfactory Map</h1>
+      <button id="toggle-sidebar" title="Hide panel" aria-label="Hide panel">‹</button>
+    </header>
+    <a id="update-banner" target="_blank" rel="noopener" hidden>
+      <span class="update-dot" aria-hidden="true"></span>
+      <span><b>Update available</b> <span id="update-banner-version"></span></span>
+      <span class="update-banner-link">Release notes ↗</span>
+    </a>
+    <nav id="tabs" role="tablist" aria-label="Panel sections">
+      <button type="button" role="tab" data-tab="layers" aria-selected="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg><span>Layers</span></button>
+      <button type="button" role="tab" data-tab="save" aria-selected="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v15H5Z"/><path d="M8 3v6h7V3"/><rect x="8" y="13" width="8" height="5"/></svg><span>Save game</span></button>
+      <button type="button" role="tab" data-tab="stats" aria-selected="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M21 20H3"/></svg><span>Statistics</span></button>
+      <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg><span>Settings</span></button>
+    </nav>
+    <div id="sidebar-content">
+      <div class="tab-panel" data-panel="layers" role="tabpanel">
+        <input id="search" type="search" placeholder="Search players, stations, resources, items…" autocomplete="off">
+        <ul id="search-results"></ul>
+        <div id="layers"></div>
+        <p class="hint">Tick a layer to show it; the arrow opens its legend. Click buildings, markers or resource nodes on the map for details.</p>
+      </div>
+
+      <div class="tab-panel" data-panel="save" role="tabpanel" hidden>
+        <section id="source" class="card" hidden>
+          <h2>Source</h2>
+          <div id="source-current" class="source-current"></div>
+          <div id="source-status" class="source-status" role="status" hidden></div>
+          <div id="source-offline" class="hint" hidden>Start the renderer with <code>--serve</code> and open the page from there to choose the save game here.</div>
+          <div id="source-controls" hidden>
+            <div class="drop-zone">
+              <span>Drop a <b>.sav</b> file here or</span>
+              <button type="button" id="source-browse">Browse…</button>
+              <input type="file" id="source-file" accept=".sav" hidden>
+            </div>
+
+            <details id="source-server">
+              <summary>Dedicated server (HTTPS API)</summary>
+              <form id="server-form" class="source-form">
+                <div class="field-row">
+                  <label>Host<input id="server-host" required placeholder="192.168.1.20" autocomplete="off"></label>
+                  <label class="narrow">Port<input id="server-port" type="number" min="1" max="65535" value="7777"></label>
+                </div>
+                <label>API token<input id="server-token" type="password" placeholder="from server.GenerateAPIToken" autocomplete="off"></label>
+                <label class="check"><input type="checkbox" id="server-verify"> Verify certificate <span class="muted">(off for self-signed)</span></label>
+                <label class="check"><input type="checkbox" id="server-savefirst" checked> Save the running game first</label>
+                <div class="button-row">
+                  <button type="button" id="server-save">Save settings</button>
+                  <button type="button" id="server-check">Check version</button>
+                  <button type="submit" class="primary">Load from server</button>
+                </div>
+                <div id="server-info" class="server-info" hidden></div>
+                <p id="server-versions" class="hint"></p>
+              </form>
+            </details>
+
+            <details id="source-ssh">
+              <summary>SSH</summary>
+              <form id="ssh-form" class="source-form">
+                <div class="field-row">
+                  <label>Target<input id="ssh-target" required placeholder="user@host" autocomplete="off"></label>
+                  <label class="narrow">Port<input id="ssh-port" type="number" min="1" max="65535" value="22"></label>
+                </div>
+                <label>Save file or folder<input id="ssh-path" required placeholder="~/.config/Epic/FactoryGame/Saved/SaveGames" autocomplete="off"></label>
+                <div class="button-row">
+                  <button type="button" id="ssh-save">Save settings</button>
+                  <button type="submit" class="primary">Load over SSH</button>
+                </div>
+                <p class="hint">Uses this machine's <code>ssh</code> with your keys; passwords are not supported. For a folder, the newest .sav below it is taken.</p>
+              </form>
+            </details>
+
+            <button type="button" id="source-refresh" class="primary wide" hidden>⟳ Refresh snapshot</button>
+            <button type="button" id="admin-logout" class="link" hidden>Log out</button>
+          </div>
+        </section>
+
+        <section class="card" id="save-details">
+          <h2>Details</h2>
+          <table id="summary"></table>
+        </section>
+
+        <div id="admin" hidden>
+          <button type="button" id="admin-open" class="link">Admin login</button>
+          <form id="admin-form" class="source-form" hidden>
+            <label>Admin password<input id="admin-password" type="password" required autocomplete="current-password"></label>
+            <div class="button-row"><button type="submit" class="primary">Log in</button></div>
+            <div id="admin-error" class="source-status" data-kind="error" role="alert" hidden></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="stats" role="tabpanel" hidden>
+        <section class="card">
+          <h2>Object counts</h2>
+          <input id="count-filter" type="search" placeholder="Filter, e.g. constructor…" autocomplete="off">
+          <table id="counts"></table>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="settings" role="tabpanel" hidden>
+        <section class="card">
+          <h2>Map</h2>
+          <label class="option"><input type="checkbox" id="opt-labels" checked> Show names of players, stations &amp; markers</label>
+          <label class="option"><input type="checkbox" id="opt-grid" checked> Show 1 km grid</label>
+          <p class="hint">Coordinates are in-game metres.</p>
+        </section>
+        <section class="card">
+          <h2>Appearance</h2>
+          <div class="option select-row">
+            <label for="opt-theme">Theme</label>
+            <select id="opt-theme">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+        </section>
+        <section class="card" id="about" hidden>
+          <h2>Updates</h2>
+          <div id="update-status" class="update-status" data-state="unknown">
+            <span class="pill" id="update-pill"></span>
+            <span id="update-text"></span>
+          </div>
+          <label class="option"><input type="checkbox" id="opt-updates" checked> Check for updates on GitHub</label>
+          <label class="option"><input type="checkbox" id="opt-prereleases"> Include pre-releases <span class="muted">(beta versions)</span></label>
+          <div class="button-row"><button type="button" id="update-check">Check now</button></div>
+        </section>
+      </div>
+    </div>
+    <footer id="sidebar-footer">
+      <span id="footer-version"></span>
+      <span>© <span id="footer-years">2026</span> by <a href="https://github.com/Tunefish92" target="_blank" rel="noopener">Tunefish</a></span>
+    </footer>
+  </aside>
+  <button id="show-sidebar" title="Show panel" aria-label="Show panel">☰</button>
+  <main id="map"></main>
+  <div id="statusbar" hidden>
+    <div class="status-name"><span id="status-session"></span><span id="status-save" class="muted"></span></div>
+    <div class="status-meta"><span id="status-source" class="pill" hidden></span><span id="status-time"></span></div>
+    <button type="button" id="status-refresh" title="Refresh snapshot" aria-label="Refresh snapshot" hidden>⟳</button>
+  </div>
+  <div id="load-modal" role="dialog" aria-modal="true" aria-labelledby="load-title" hidden>
+    <div class="load-card">
+      <img class="load-logo" src="logo.svg" width="64" height="64" alt="">
+      <h2 id="load-title">Loading the save game</h2>
+      <p id="progress-stage" class="load-stage"></p>
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="progress-stage">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <div class="load-meta"><span id="progress-percent"></span><span id="load-elapsed"></span></div>
+      <ol class="load-steps">
+        <li data-step="fetch">Fetch</li>
+        <li data-step="read">Read</li>
+        <li data-step="find">Analyse</li>
+        <li data-step="draw">Draw map</li>
+      </ol>
+      <p id="load-error" class="load-error" role="alert" hidden></p>
+      <button type="button" id="load-close" class="primary" hidden>Close</button>
+    </div>
+  </div>
+  <div id="placeholder" hidden>
+    <div class="placeholder-card">
+      <img class="placeholder-logo" src="logo.svg" width="88" height="88" alt="">
+      <h2>No map yet</h2>
+      <p id="placeholder-text">No save game has been loaded so far.</p>
+      <button type="button" id="placeholder-browse" class="primary" hidden>Choose a save file…</button>
+      <ul id="placeholder-steps" hidden>
+        <li><b>Drop</b> a <code>.sav</code> file anywhere on this page</li>
+        <li>or fetch it from your <b>dedicated server</b> or over <b>SSH</b> in the panel on the left</li>
+      </ul>
+    </div>
+  </div>
+  <div id="cursor"></div>
+
+  <script src="leaflet/leaflet.js"></script>
+  <script src="map-data.js"></script>
+  <script src="version.js"></script>
+  <script src="viewer.js"></script>
+  <script src="update.js"></script>
+  <script src="source.js"></script>
+</body>
+</html>

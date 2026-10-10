@@ -1,0 +1,34 @@
+services:
+  map:
+    # `docker compose pull` fetches the prebuilt image; `docker compose up -d --build` builds it
+    # from this checkout instead.
+    image: ${SMR_IMAGE:-ghcr.io/tunefish92/satisfactorymaprenderer:latest}
+    build:
+      context: .
+      dockerfile: src/SatisfactoryMapRenderer/Dockerfile
+    container_name: satisfactory-map
+    restart: unless-stopped
+    environment:
+      # Required. Only admins who log in with it can choose the save game (upload, dedicated
+      # server, SSH); everyone else just sees the map.
+      SMR_ADMIN_PASSWORD: ${SMR_ADMIN_PASSWORD:?Set SMR_ADMIN_PASSWORD in .env (see .env.example)}
+      # Highest rendered zoom level (3-9). 9 is the sharpest; each level less renders about four
+      # times faster and needs a quarter of the disk space.
+      SMR_MAX_ZOOM: ${SMR_MAX_ZOOM:-9}
+      # Owner of the data folder on the host; the app runs as this user.
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    ports:
+      - "${SMR_PORT:-8080}:8080"
+    volumes:
+      - ${SMR_DATA_HOST_PATH:-./map-data}:/data
+      # Optional: your Satisfactory installation, read-only. On the first start the icons, names
+      # and the in-game map are exported from it into the data folder; afterwards it is no longer
+      # needed. Without it the map shows plain markers on the explored-area outline.
+      # - /path/to/Satisfactory:/game:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

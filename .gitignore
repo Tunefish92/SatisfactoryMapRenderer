@@ -1,0 +1,18 @@
+bin/
+obj/
+.vs/
+*.user
+output/
+*_map/
+TestResults/
+
+# Game assets and map images: copyrighted, never published with the source
+gamedata/
+maps/
+*.sav
+
+# Docker
+.env
+.env.*
+!.env.example
+/map-data/
