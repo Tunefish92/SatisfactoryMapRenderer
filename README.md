@@ -134,8 +134,13 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 
 The image contains **no game files**. Mount your Satisfactory installation read-only at `/game` (the folder that
 contains `FactoryGame` and `CommunityResources`): on the first start the icons, item names, resource data and the
-in-game map are exported into the data folder, and the mount can be removed again. Without it the map still works,
-with plain markers on the explored-area outline.
+in-game map are exported into the data folder (`map-data/gamedata/`), and the mount can be removed again. Without
+it the map still works, with plain markers on the explored-area outline.
+
+The mount is only needed for that one export. If you already have an exported `gamedata` folder, for example
+from another installation of this app or from running `--export-game-data` yourself, copy it to
+`map-data/gamedata/` and leave the mount out altogether. After a game update that adds items or buildings, export
+again (delete `map-data/gamedata/` and start once with the game mounted).
 
 Two optional images in `map-data/maps/` replace or add base maps, both covering the whole in-game map area:
 `game-map.jpg` (used instead of the exported in-game map) and `realistic-map.jpg` (offered as a second base map in
