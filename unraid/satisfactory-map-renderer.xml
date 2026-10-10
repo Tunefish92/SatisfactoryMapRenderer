@@ -19,6 +19,9 @@ Reads saves from Update 5 up to 1.2.4. The image contains no game files: mount y
   <TemplateURL>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/unraid/satisfactory-map-renderer.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/unraid/satisfactory-map-renderer.png</Icon>
   <License>MIT</License>
+  <Screenshot>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/overview.jpg</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/factory.jpg</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/statistics-dark.jpg</Screenshot>
   <ExtraSearchTerms>satisfactory map save savegame dedicated server factory interactive</ExtraSearchTerms>
 
   <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Port the map is served on." Type="Port" Display="always" Required="true" Mask="false">8080</Config>

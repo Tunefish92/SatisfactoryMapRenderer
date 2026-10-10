@@ -8,6 +8,8 @@ A self-hosted web app: one Docker container reads a save game, renders the whole
 serves it. Load the save by drag and drop, fetch it from a running dedicated server, or copy it over SSH, and
 refresh it with one click. Everyone else just opens the page and sees the map.
 
+![The whole map with resource nodes, the factory and map markers](docs/screenshots/overview.jpg)
+
 Questions and help: [Discussions](https://github.com/Tunefish92/SatisfactoryMapRenderer/discussions) ·
 Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 [Changelog](CHANGELOG.md)
@@ -29,6 +31,10 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 * **Visitors only see the map.** Choosing and refreshing the save needs the admin password.
 
 Reads saves from Update 5 up to 1.2.4.
+
+| Zoomed in: buildings with their icons, belts, click for details | Dark theme, statistics |
+|---|---|
+| ![A factory zoomed in, with the details of a smelter](docs/screenshots/factory.jpg) | ![Dark theme with the object counts](docs/screenshots/statistics-dark.jpg) |
 
 ## Quick start
 

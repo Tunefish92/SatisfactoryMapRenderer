@@ -6,6 +6,8 @@ The whole factory on a zoomable map: foundations, buildings, belts, pipes, railw
 players, vehicles, resource nodes with purity, collectibles and more, with search and
 click-to-inspect. One container renders the map and serves it.
 
+![The whole map with resource nodes, the factory and map markers](https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/overview.jpg)
+
 Source, full documentation and issues: **https://github.com/Tunefish92/SatisfactoryMapRenderer**
 
 ## Quick start with Docker Compose
