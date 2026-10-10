@@ -15,4 +15,5 @@ maps/
 .env
 .env.*
 !.env.example
+admin.env
 /map-data/

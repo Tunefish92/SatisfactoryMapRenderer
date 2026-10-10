@@ -12,6 +12,8 @@ map-data/
 **/*.sav
 .env
 .env.*
+admin.env
+admin.env.example
 
 # Not needed to build the image
 .git/

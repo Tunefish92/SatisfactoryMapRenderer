@@ -11,3 +11,5 @@ First public version.
 * Game icons, names and the in-game map are exported once from a mounted Satisfactory installation.
 * Reads saves from Update 5 up to 1.2.4.
 * Docker image for amd64 and arm64, Unraid template.
+* The compose file takes the admin password from `admin.env`, passed on unchanged, so it may contain any
+  character including `$`.

@@ -8,10 +8,15 @@ services:
       dockerfile: src/SatisfactoryMapRenderer/Dockerfile
     container_name: satisfactory-map
     restart: unless-stopped
+    # The admin password comes from admin.env, which is passed on exactly as written ("raw"):
+    # every character is allowed, also "$", "#", quotes and spaces, which Compose would change in
+    # .env or in this file. Without it the container stops with a message (`docker compose logs`).
+    # Needs Docker Compose 2.30 or newer.
+    env_file:
+      - path: admin.env
+        required: false
+        format: raw
     environment:
-      # Required. Only admins who log in with it can choose the save game (upload, dedicated
-      # server, SSH); everyone else just sees the map.
-      SMR_ADMIN_PASSWORD: ${SMR_ADMIN_PASSWORD:?Set SMR_ADMIN_PASSWORD in .env (see .env.example)}
       # Highest rendered zoom level (3-9). 9 is the sharpest; each level less renders about four
       # times faster and needs a quarter of the disk space.
       SMR_MAX_ZOOM: ${SMR_MAX_ZOOM:-9}

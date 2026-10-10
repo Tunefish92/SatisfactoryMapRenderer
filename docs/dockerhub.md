@@ -20,6 +20,7 @@ services:
     image: tunefish92/satisfactorymaprenderer:latest
     restart: unless-stopped
     environment:
+      # Required, at least 8 characters. A "$" in the password must be written as "$$" here.
       SMR_ADMIN_PASSWORD: change-me-please
     ports:
       - "8080:8080"
@@ -53,7 +54,7 @@ the explored-area outline.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SMR_ADMIN_PASSWORD` | – | **Required**, at least 8 characters. Protects the save game source. |
+| `SMR_ADMIN_PASSWORD` | – | **Required**, at least 8 characters, any characters. Protects the save game source. In a compose file write `$$` for every `$`, or pass the password with `env_file` and `format: raw`. |
 | `SMR_MAX_ZOOM` | `9` | Highest rendered zoom level (3–9). Each level less renders about four times faster. |
 | `PUID` / `PGID` | `1000` | Owner of the data folder; the app runs as this user. |
 

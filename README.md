@@ -46,7 +46,8 @@ services:
     image: ghcr.io/tunefish92/satisfactorymaprenderer:latest
     restart: unless-stopped
     environment:
-      SMR_ADMIN_PASSWORD: change-me-please   # required, at least 8 characters
+      # Required, at least 8 characters. A "$" in the password must be written as "$$" here.
+      SMR_ADMIN_PASSWORD: change-me-please
     ports:
       - "8080:8080"
     volumes:
@@ -59,7 +60,22 @@ Open `http://localhost:8080/`, click **Admin login** in the *Save game* tab of t
 game. The image is also on Docker Hub as `tunefish92/satisfactorymaprenderer`, and there is a template for
 **Unraid** in [`unraid/`](unraid/).
 
-To build from this repository instead: `cp .env.example .env`, set the password, `docker compose up -d --build`.
+To build from this repository instead: `cp admin.env.example admin.env`, set the password in it, and run
+`docker compose up -d --build`. Optional settings (port, data folder) go into `.env`, see `.env.example`.
+
+**Which characters may the password contain?** Any, with at least 8 of them; it is compared exactly, including
+upper and lower case and spaces. The only pitfall is Docker Compose itself, which reads `$` in `docker-compose.yml`
+and `.env` as the start of a variable: `pa$word` silently becomes `pa`. Either write `$$` for every `$` there, or
+do as this repository's compose file does and keep the password in its own file that Compose passes on unchanged
+(needs Docker Compose 2.30 or newer):
+
+```yaml
+    env_file:
+      - path: admin.env      # contains the line: SMR_ADMIN_PASSWORD=your password, exactly as it is
+        format: raw
+```
+
+On Unraid and with `docker run -e` the password is not touched by Compose; quote it for your shell as usual.
 
 ## Choosing the save game
 
@@ -93,7 +109,7 @@ the *Map* dropdown).
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SMR_ADMIN_PASSWORD` | – | **Required**, at least 8 characters. Only admins can choose or refresh the save game. Five wrong passwords block the login for a minute. |
+| `SMR_ADMIN_PASSWORD` | – | **Required**, at least 8 characters, any characters (see the note on `$` above). Only admins can choose or refresh the save game. Five wrong passwords block the login for a minute. |
 | `SMR_MAX_ZOOM` | `9` | Highest rendered zoom level (3–9). 9 is about 6 cm per pixel; each level less renders about four times faster and needs a quarter of the disk space. |
 | `PUID` / `PGID` | `1000` | Owner of the data folder; the app runs as this user. |
 
