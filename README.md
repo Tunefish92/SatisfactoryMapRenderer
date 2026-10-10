@@ -54,7 +54,8 @@ services:
       - "8080:8080"
     volumes:
       - ./map-data:/data
-      # Optional, read-only: your Satisfactory installation, for the game's icons and map
+      # Optional, read-only: your Satisfactory installation. Only needed when your game is newer
+      # than the game data in the image (new items or buildings show without icons).
       # - /path/to/Satisfactory:/game:ro
 ```
 
@@ -132,18 +133,17 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 
 ## Game icons and the in-game map
 
-The image contains **no game files**. Mount your Satisfactory installation read-only at `/game` (the folder that
-contains `FactoryGame` and `CommunityResources`): on the first start the icons, item names, resource data and the
-in-game map are exported into the data folder (`map-data/gamedata/`), and the mount can be removed again. Without
-it the map still works, with plain markers on the explored-area outline.
+The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
+in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
-The mount is only needed for that one export. If you already have an exported `gamedata` folder, for example
-from another installation of this app or from running `--export-game-data` yourself, copy it to
-`map-data/gamedata/` and leave the mount out altogether. After a game update that adds items or buildings, export
-again (delete `map-data/gamedata/` and start once with the game mounted).
+When the game gets an update that the image does not know yet, new items and buildings appear without icons
+until the image is updated. To use your own game's data in the meantime, mount your Satisfactory installation
+read-only at `/game` (the folder that contains `FactoryGame` and `CommunityResources`) and delete
+`map-data/gamedata/` if it exists: on the next start the data is exported into `map-data/gamedata/`, which from
+then on is used instead of the bundled data. The mount can be removed again afterwards.
 
 Two optional images in `map-data/maps/` replace or add base maps, both covering the whole in-game map area:
-`game-map.jpg` (used instead of the exported in-game map) and `realistic-map.jpg` (offered as a second base map in
+`game-map.jpg` (used instead of the bundled in-game map) and `realistic-map.jpg` (offered as a second base map in
 the *Map* dropdown).
 
 ## Settings
@@ -157,7 +157,7 @@ the *Map* dropdown).
 | Path | Meaning |
 |---|---|
 | `/data` | Everything the app keeps: `map/` (the rendered map), `gamedata/`, `maps/`, `cache/` (settings, fetched saves), `home/` (with `.ssh`). |
-| `/game` | Optional, read-only: a Satisfactory installation. |
+| `/game` | Optional, read-only: a Satisfactory installation, to export newer game data than the image has. |
 
 **On the internet.** The container speaks plain HTTP on port 8080. Put it behind a reverse proxy that adds HTTPS
 and forwards `Host` and `X-Forwarded-Proto`; otherwise the admin password travels unencrypted.
@@ -168,8 +168,6 @@ pre-releases". The check is a request from the admin's browser to `api.github.co
 
 ## Limitations
 
-* Resource node types, purities and collectibles come from the game's level data. Without the exported game data,
-  a node's type is only known when an extractor stands on it.
 * Building footprints come from a built-in table and are approximate; unknown buildables fall back to size
   heuristics.
 * A dedicated server offers no live feed. "Live" means fetching and rendering a new snapshot, about half a minute
@@ -216,5 +214,9 @@ variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` are set, to Docke
 
 ## Licence and credits
 
-[MIT](LICENSE). Not affiliated with Coffee Stain Studios; Satisfactory and its assets belong to them, and none of
-them are part of this repository or its image.
+The code is under the [MIT licence](LICENSE).
+
+The game data in [`gamedata/`](gamedata/) (icons, names, level data, logo, in-game map) and the map and icons
+visible in the screenshots are the property of Coffee Stain Studios and are **not** covered by that licence. They
+are included so that this fan-made tool can display save games of their game. This project is not affiliated with
+or endorsed by Coffee Stain Studios.

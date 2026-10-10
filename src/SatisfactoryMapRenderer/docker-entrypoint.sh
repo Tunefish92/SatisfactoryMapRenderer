@@ -9,7 +9,7 @@
 #
 # Layout of the data folder:
 #   map/        the rendered map that is served
-#   gamedata/   icons and level data exported from the game (optional, see below)
+#   gamedata/   your own export of the game's icons and level data (optional; replaces the bundled one)
 #   maps/       game-map.jpg and realistic-map.jpg (optional)
 #   cache/      save game source settings, fetched saves
 #   home/       home of the app user; home/.ssh holds the keys for the SSH source
@@ -28,16 +28,23 @@ run_app() {
     cd "$DATA_PATH"
     export HOME="$DATA_PATH/home"
 
-    # Icons, names and resource data are the game's own assets and not part of this image. If the
-    # game folder is mounted at /game they are exported once; without them the map still works,
-    # with plain markers.
+    # The image brings the game's icons, names, level data and in-game map (/app/gamedata), so the
+    # map works out of the box. A game folder mounted at /game is exported once into the data
+    # folder, e.g. after a game update that the image does not know yet; an export in the data
+    # folder always wins over the bundled one.
     if [ -d /game/FactoryGame ] && [ ! -f "$DATA_PATH/gamedata/gamedata.json" ]; then
         echo "Exporting game data from /game (one-time)..."
         "$@" --export-game-data --game /game --game-data "$DATA_PATH/gamedata" --cache "$DATA_PATH/cache" \
-            || echo "Could not export the game data; continuing without it." >&2
+            || echo "Could not export the game data; using the bundled game data." >&2
+    fi
+    if [ -f "$DATA_PATH/gamedata/gamedata.json" ]; then
+        GAME_DATA="$DATA_PATH/gamedata"
+    else
+        GAME_DATA=/app/gamedata
     fi
 
-    exec "$@" --serve 8080 --bind '*' -o "$DATA_PATH/map" --cache "$DATA_PATH/cache" -z "${SMR_MAX_ZOOM:-9}" $SMR_EXTRA_ARGS
+    exec "$@" --serve 8080 --bind '*' -o "$DATA_PATH/map" --cache "$DATA_PATH/cache" --game-data "$GAME_DATA" \
+        -z "${SMR_MAX_ZOOM:-9}" $SMR_EXTRA_ARGS
 }
 
 if [ "$(id -u)" = "0" ]; then

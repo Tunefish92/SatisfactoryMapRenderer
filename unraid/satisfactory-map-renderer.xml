@@ -13,7 +13,7 @@
 &#xD;
 The save game is chosen in the web UI by an admin: upload a .sav file, fetch it from a running dedicated server through its HTTPS API (game version 1.0 or newer, API token from server.GenerateAPIToken), or copy it over SSH. A "Refresh snapshot" button fetches the current state again. Visitors only see the map.&#xD;
 &#xD;
-Reads saves from Update 5 up to 1.2.4. The image contains no game files: mount your Satisfactory installation once to get the game's icons, names and in-game map; without it the map shows plain markers.</Overview>
+Reads saves from Update 5 up to 1.2.4. Works out of the box: the game's icons, names and in-game map (from Satisfactory 1.2.4) are included.</Overview>
   <Category>GameServers: Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/unraid/satisfactory-map-renderer.xml</TemplateURL>
@@ -30,7 +30,7 @@ Reads saves from Update 5 up to 1.2.4. The image contains no game files: mount y
 
   <Config Name="Admin Password" Target="SMR_ADMIN_PASSWORD" Default="" Mode="" Description="Required, at least 8 characters. Only admins who log in with it (Save game tab of the side panel) can choose or refresh the save game." Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
-  <Config Name="Game Folder" Target="/game" Default="" Mode="ro" Description="Optional: a Satisfactory installation (the folder that contains FactoryGame and CommunityResources). On the first start the icons, names and in-game map are exported from it; afterwards it can be removed again." Type="Path" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Game Folder" Target="/game" Default="" Mode="ro" Description="Optional, normally not needed. A Satisfactory installation (the folder that contains FactoryGame and CommunityResources): if your game is newer than the game data in the image, the icons, names and in-game map are exported from it once." Type="Path" Display="always" Required="false" Mask="false"></Config>
 
   <Config Name="Max Zoom" Target="SMR_MAX_ZOOM" Default="9" Mode="" Description="Highest rendered zoom level, 3 to 9. 9 is the sharpest; each level less renders about four times faster and needs a quarter of the disk space." Type="Variable" Display="advanced" Required="false" Mask="false">9</Config>
 

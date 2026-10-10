@@ -29,14 +29,15 @@ LABEL org.opencontainers.image.title="Satisfactory Map Renderer" \
 
 # - curl: container health check
 # - openssh-client: the "SSH" save game source
-# The image contains no game files: icons, level data and map images are the game's own assets
-# and come from the user's installation (see docker-entrypoint.sh).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl openssh-client \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /data
 
 COPY --from=build /app/publish .
+# The game's icons, names, level data and in-game map, so the map works without a game
+# installation. They are Coffee Stain Studios' assets, see gamedata/README.md.
+COPY gamedata/ /app/gamedata/
 COPY src/SatisfactoryMapRenderer/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # Strip CR in case the script was checked out with Windows line endings. The `map-renderer` command
 # runs the renderer's own commands, e.g. `docker exec satisfactory-map map-renderer --help`.

@@ -6,8 +6,7 @@ output/
 *_map/
 TestResults/
 
-# Game assets and map images: copyrighted, never published with the source
-gamedata/
+# Map images kept locally (the bundled game data is in gamedata/)
 maps/
 *.sav
 

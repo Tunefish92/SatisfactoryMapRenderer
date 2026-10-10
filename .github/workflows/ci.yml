@@ -63,6 +63,9 @@ jobs:
           test -f /tmp/map-data/map/index.html
           docker top map -eo pid,uid,args | grep -Eq '^\s*[0-9]+\s+1000\s+dotnet /app/SatisfactoryMapRenderer\.dll'
           curl -fsS http://localhost:8080/ | grep -q 'id="map"'
+          # The bundled game data is found: the map has the game's logo out of the box.
+          docker logs map 2>&1 | grep -q 'Game assets from /app/gamedata'
+          curl -fsS -o /dev/null http://localhost:8080/game-logo.png
 
           curl -fsS http://localhost:8080/api/source | grep -q '"admin":false'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Map-Renderer: 1' -d x 'http://localhost:8080/api/upload?name=a.sav')" = "401"

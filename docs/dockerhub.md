@@ -26,7 +26,8 @@ services:
       - "8080:8080"
     volumes:
       - ./map-data:/data
-      # Optional, read-only: your Satisfactory installation, for the game's icons and map
+      # Optional, read-only: your Satisfactory installation. Only needed when your game is newer
+      # than the game data in the image (new items or buildings show without icons).
       # - /path/to/Satisfactory:/game:ro
 ```
 
@@ -45,10 +46,9 @@ again. Visitors who are not logged in only see the map.
 
 ## Game icons and the in-game map
 
-The image contains no game files. Mount your Satisfactory installation at `/game` (read-only): on the
-first start the icons, item names, resource purities and the in-game map are exported into the data
-folder, and the mount can be removed again. Without it the map still works, with plain markers on
-the explored-area outline.
+The image works out of the box: it brings the game's icons, names, resource data and the in-game map, exported from
+Satisfactory 1.2.4. If your game is newer than that, mount your Satisfactory installation at `/game` (read-only)
+and the data is exported from it once into the data folder.
 
 ## Settings
 
@@ -61,9 +61,10 @@ the explored-area outline.
 | Path | Meaning |
 |---|---|
 | `/data` | Rendered map, exported game data, settings (including the server's API token). |
-| `/game` | Optional, read-only: a Satisfactory installation. |
+| `/game` | Optional, read-only: a Satisfactory installation, to export newer game data than the image has. |
 
 The container speaks plain HTTP on port 8080. To reach it from the internet, put it behind a reverse
 proxy that adds HTTPS, so the admin password is not sent unencrypted.
 
-Reads saves from Update 5 up to 1.2.4. Not affiliated with Coffee Stain Studios.
+Reads saves from Update 5 up to 1.2.4. Not affiliated with or endorsed by Coffee Stain Studios; the game's icons
+and map included in the image are their property.

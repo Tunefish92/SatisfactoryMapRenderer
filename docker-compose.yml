@@ -27,9 +27,9 @@ services:
       - "${SMR_PORT:-8080}:8080"
     volumes:
       - ${SMR_DATA_HOST_PATH:-./map-data}:/data
-      # Optional: your Satisfactory installation, read-only. On the first start the icons, names
-      # and the in-game map are exported from it into the data folder; afterwards it is no longer
-      # needed. Without it the map shows plain markers on the explored-area outline.
+      # Optional, normally not needed: your Satisfactory installation, read-only. The image brings
+      # the game's icons, names and in-game map; mount the game only when it is newer than those
+      # (new items show without icons). They are then exported once into the data folder.
       # - /path/to/Satisfactory:/game:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]

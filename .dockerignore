@@ -3,8 +3,7 @@
 **/obj/
 **/TestResults/
 
-# Game assets, rendered maps and secrets: never part of the build context or the image
-gamedata/
+# Local map images, rendered maps and secrets: never part of the build context or the image
 maps/
 output/
 map-data/
