@@ -28,10 +28,11 @@
     <label class="option"><input type="checkbox" id="opt-markers" checked> Players &amp; landmarks</label>
     <label class="option"><input type="checkbox" id="opt-spin"> Rotate slowly</label>
     <button type="button" id="terrain-reset">Reset view</button>
-    <p class="hint">Drag to rotate · wheel-button drag or Shift+drag to move · wheel to zoom at the mouse</p>
+    <p class="hint">Drag to rotate · wheel-button drag or Shift+drag to move · wheel to zoom at the mouse · click a building for its details</p>
   </div>
 
   <div id="terrain-labels"></div>
+  <div id="terrain-popup" class="card" hidden></div>
   <div id="terrain-status" class="source-status" role="status">Loading the terrain…</div>
 
   <script src="map-data.js"></script>

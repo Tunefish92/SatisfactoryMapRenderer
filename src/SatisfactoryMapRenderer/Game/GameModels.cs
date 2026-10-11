@@ -102,6 +102,9 @@ public static class GameModels
     private const string FactoryMaterial = "MM_Factory_Array", FactoryArray = "TX2D_FactoryBase_BC";
 
     /// <summary>Materials that are overlays or stand-ins for distant views, not surfaces of the model.</summary>
+    /// <summary>Materials whose texture is black or dark where the game puts the paint.</summary>
+    private static readonly string[] PaintedMaterials = ["MMU_Pipeline", "MMU_WaterPump"];
+    private static readonly string[] StandIns = ["_IMP", "Imposter", "FactoryLod"];
     private static readonly string[] SkippedMaterials = ["Decal", "_IMP", "Imposter", "FactoryLod", "Hologram"];
 
     private static readonly string[] AlbedoNames = ["Albedo", "BaseColor", "Base Color", "BC", "Diffuse", "Color", "Albedo_A", "MainTexture", "Texture"];
@@ -169,6 +172,28 @@ public static class GameModels
                         var scale = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
                         parts.Add(Part(mesh, location, rotation, scale));
                     }
+                }
+
+                // Moving parts (pump heads, pistons) are meshes of their own, in the pose they rest in.
+                foreach (var component in exports.Where(e => e.ExportType == "FGVertexAnimatedMeshComponent"))
+                {
+                    if (Ignored.Any(i => component.Name.Contains(i, StringComparison.OrdinalIgnoreCase))
+                        || !component.TryGetValue(out FPackageIndex meshIndex, "StaticMesh") || Mesh(meshIndex, meshObjects) is not { } mesh
+                        || parts.Any(p => p.Mesh == mesh))
+                        continue;
+                    parts.Add(Part(mesh, component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0)),
+                        component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion(), component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1))));
+                }
+
+                // The space elevator's shaft and the platform on top of it are stored hanging below the
+                // building; the game lifts them when it is built, so that the shaft stands on the base.
+                if (name == "Build_SpaceElevator" && parts.FirstOrDefault(p => p.Mesh.Contains("MidPart_01", StringComparison.Ordinal)) is { } shaft
+                    && meshObjects[shaft.Mesh].RenderData?.Bounds is { } bounds)
+                {
+                    double lift = -(bounds.Origin.Z - bounds.BoxExtent.Z);
+                    for (int i = 0; i < parts.Count; i++)
+                        if (parts[i].Mesh.Contains("MidPart", StringComparison.Ordinal) || parts[i].Mesh.Contains("SpaceElevator_Elevator", StringComparison.Ordinal))
+                            parts[i] = parts[i] with { T = [parts[i].T[0], parts[i].T[1], Round(parts[i].T[2] + lift)] };
                 }
 
                 if (parts.Count > 0)
@@ -250,6 +275,10 @@ public static class GameModels
         var real = candidates.Where(c => c.Materials.Any(m => m >= 0)).ToList();
         if (real.Count == 0)
             return null;
+        // Levels that swap part of the model for a stand-in would leave that part out.
+        var whole = real.Where(c => !c.Lod.Sections.Any(s => materials.IsStandIn(mesh, s.MaterialIndex))).ToList();
+        if (whole.Count > 0)
+            real = whole;
         var (lod, sectionMaterials) = real.Where(c => c.Lod.IndexBuffer!.Length / 3 >= wantedTriangles).OrderBy(c => c.Lod.IndexBuffer!.Length).FirstOrDefault() is { Lod: not null } wanted
             ? wanted
             : real.OrderByDescending(c => c.Lod.IndexBuffer!.Length).First();
@@ -333,6 +362,11 @@ public static class GameModels
         private readonly Dictionary<string, int> _byName = new(StringComparer.Ordinal);
         private readonly Dictionary<string, string?> _textures = new(StringComparer.Ordinal);
 
+        /// <summary>A material that replaces the real ones on a coarse level of detail.</summary>
+        public bool IsStandIn(UStaticMesh mesh, int slot) =>
+            mesh.Materials is { } slots && slot >= 0 && slot < slots.Length && slots[slot]?.ResolvedObject is { } resolved
+            && StandIns.Any(s => resolved.Name.Text.Contains(s, StringComparison.OrdinalIgnoreCase));
+
         /// <summary>Index into <see cref="ModelLibrary.Materials"/>, or -1 for a surface that is not drawn.</summary>
         public int Index(UStaticMesh mesh, int slot)
         {
@@ -401,8 +435,8 @@ public static class GameModels
                 {
                     // Foundations hold a quarter of their top in the texture and lay it out mirrored around the middle.
                     bool mirrored = chain.Last().Name.StartsWith("MM_BakedStencil", StringComparison.Ordinal);
-                    // Pipes are painted: their texture is the dark, unpainted surface with its details.
-                    bool painted = chain.Last().Name == "MMU_Pipeline";
+                    // Painted surfaces: the texture is dark where the paint goes and shows the bare metal elsewhere.
+                    bool painted = PaintedMaterials.Contains(chain.Last().Name);
                     return new ModelMaterial(name, mirrored ? "texture-mirrored" : painted ? "texture-painted" : "texture", file, null, chain.Last().Name);
                 }
             }
@@ -410,7 +444,7 @@ public static class GameModels
             {
                 var texture = root.ReferencedTextures?.FirstOrDefault(t => t is UTexture2D && AlbedoSuffixes.Any(s => t.Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
                 if (texture is not null && Texture(texture.Name, texture) is { } file)
-                    return new ModelMaterial(name, root.Name == "MMU_Pipeline" ? "texture-painted" : "texture", file, null, chain.Last().Name);
+                    return new ModelMaterial(name, PaintedMaterials.Contains(root.Name) ? "texture-painted" : "texture", file, null, chain.Last().Name);
             }
 
             string color = name.Contains("Glass", StringComparison.OrdinalIgnoreCase) ? "#9fc4d8"

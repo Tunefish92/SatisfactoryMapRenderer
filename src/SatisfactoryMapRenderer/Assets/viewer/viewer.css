@@ -964,6 +964,35 @@ body.terrain-page { overflow: hidden; }
 .terrain-label::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 8px; background: var(--color-text-muted); }
 .terrain-label.player { border-color: #ff4d4d; }
 .terrain-label.station { border-color: #a29bfe; }
+#terrain-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  min-width: 270px;
+  max-width: 320px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  will-change: transform;
+}
+#terrain-popup::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: 12px;
+  background: var(--color-text-muted);
+}
+#terrain-popup.moved::after { display: none; }
+#terrain-popup h3 { margin: 0 18px 2px 0; font-family: var(--font-heading); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-primary); }
+#terrain-popup .sub { margin-bottom: 8px; color: var(--color-text-muted); font-size: 12px; }
+#terrain-popup table { border-collapse: collapse; }
+#terrain-popup td { padding: 1px 0; vertical-align: top; }
+#terrain-popup td:first-child { padding-right: 12px; color: var(--color-text-muted); white-space: nowrap; }
+#terrain-popup .close { position: absolute; top: 6px; right: 8px; border: 0; background: none; color: var(--color-text-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+#terrain-popup .close:hover { color: var(--color-text); }
 #terrain-status { position: fixed; left: 50%; bottom: 20px; z-index: 10; transform: translateX(-50%); box-shadow: var(--shadow-md); }
 
 /* Button on the 2D map that opens the 3D view */
@@ -971,3 +1000,4 @@ body.terrain-page { overflow: hidden; }
 
 #factory-layers .option { justify-content: flex-start; }
 #factory-layers .count { margin-left: auto; color: var(--color-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#terrain-popup[hidden] { display: none; }

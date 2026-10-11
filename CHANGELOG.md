@@ -10,6 +10,9 @@
   surfaces. "Realistic ground" in the 3D view switches back to the in-game map.
 * 3D view: conveyor belts, pipes, hypertubes and railway tracks in the game's own models and textures, laid
   along their paths piece by piece as in the game.
+* 3D view: buildings are clickable and show the same details as on the 2D map.
+* 3D view: models that were incomplete are whole (water extractor with its moving part and paint; no more
+  stand-in levels of detail), and the space elevator's shaft and platform stand at their real height.
 * 3D view: terrain heights calibrated with the game's landscape (they were up to 5 m too low on high ground);
   the wheel zooms towards the mouse, the wheel button moves the view, the right button turns it.
 * Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is

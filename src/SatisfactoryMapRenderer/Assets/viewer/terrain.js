@@ -243,6 +243,15 @@
     return list;
   }) : [];
 
+  // What the 2D map tells about a building on a click, found again here by the building's position.
+  const inspectAt = new Map();
+  for (const item of D.inspect || []) {
+    const key = item[0] + ',' + item[1];
+    if (!inspectAt.has(key)) inspectAt.set(key, []);
+    inspectAt.get(key).push(item);
+  }
+  const pickable = []; // buildings that can be clicked: their box in the world and what to show
+
   const meshInstances = []; // { layer, mesh, data: number[] } – 15 numbers per instance: matrix rows, colour
   let modelCount = 0, triangleCount = 0;
   if (F && F.layers) {
@@ -256,6 +265,14 @@
       for (let i = 0; i + 15 < b.length; i += 16) {
         const color = rgb[b[i + 14]], parts = partMatrices[b[i + 15]];
         const qx = b[i + 3] / 10000, qy = b[i + 4] / 10000, qz = b[i + 5] / 10000, qw = b[i + 6] / 10000;
+        const known = inspectAt.get(b[i] + ',' + b[i + 1]);
+        if (known && known.length) {
+          pickable.push({
+            item: known.shift(), layer: null, x: b[i] - centreX, y: b[i + 1] - centreY, z: b[i + 2] + b[i + 13] + b[i + 12] / 2,
+            hx: b[i + 10] / 2 * b[i + 7] / 1000, hy: b[i + 11] / 2 * b[i + 8] / 1000, hz: b[i + 12] / 2 * b[i + 9] / 1000,
+            yaw: Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz)), first: pickable.length,
+          });
+        }
         if (parts && parts.length) {
           // the real model: every part of the building, placed with the building's own position and rotation
           const building = transform(b[i] - centreX, b[i + 1] - centreY, b[i + 2], qx, qy, qz, qw, b[i + 7] / 1000, b[i + 8] / 1000, b[i + 9] / 1000);
@@ -329,6 +346,7 @@
       }
       const entry = { id: layer.id, title: layer.title, visible: remembered[layer.id] ?? layer.visible, data: new Float32Array(out), count: out.length / 11, pieces: layer.boxes.length / 16 + lineCount };
       if (out.length || perMesh.size) factory.push(entry);
+      for (const p of pickable) if (!p.layer) p.layer = entry;
       for (const [mesh, data] of perMesh) meshInstances.push({ layer: entry, mesh, data: new Float32Array(data), count: data.length / 15 });
     }
   }
@@ -430,8 +448,10 @@
       if (kind == 1) {
         base = texture(albedo, vUv).rgb;
       } else if (kind == 3) {
-        // a painted surface: the paint, with the light and dark of the texture
-        base = flatColor * min(texture(albedo, vUv).rgb * 4.6, vec3(1.3));
+        // a painted surface: paint where the texture is dark, the texture's bare metal elsewhere
+        vec3 bare = texture(albedo, vUv).rgb;
+        float tone = dot(bare, vec3(0.299, 0.587, 0.114));
+        base = mix(flatColor * (0.8 + tone), bare, smoothstep(0.24, 0.36, tone));
       } else if (kind == 2) {
         // The texture coordinate lies in one of 3 × 3 squares; the square says which of the nine surface
         // types the face has. Inside the square the surface repeats.
@@ -457,7 +477,7 @@
   const materials = (F && F.materials || []).map(([kind, value]) => {
     const textured = kind.startsWith('texture');
     // pipes in the paint they have as standard, FICSIT orange
-    const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : kind === 'texture-painted' ? [0.93, 0.50, 0.20] : [0.62, 0.64, 0.66], texture: null };
+    const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : kind === 'texture-painted' ? (value.startsWith('TX_Pipe_') ? [0.93, 0.50, 0.20] : [0.98, 0.58, 0.29]) : [0.62, 0.64, 0.66], texture: null };
     if (textured && modelData) {
       loadImage(`terrain/textures/${value}`).then(img => {
         const t = gl.createTexture();
@@ -763,6 +783,7 @@
       }
     }
     placeLabels();
+    placePopup();
   }
 
   let last = performance.now();
@@ -819,13 +840,17 @@
     clampView();
   });
   /** The point of the terrain under a position of the canvas (view coordinates), or null where there is only sky. */
-  function terrainUnder(clientX, clientY) {
+  /** Direction of the line of sight through a position of the canvas (view coordinates), from the eye. */
+  function sightLine(clientX, clientY) {
     updateCamera();
     const box = canvas.getBoundingClientRect(), half = Math.tan(0.4);
     const nx = ((clientX - box.left) / box.width * 2 - 1) * half * box.width / box.height, ny = (1 - (clientY - box.top) / box.height * 2) * half;
     const ty = groundAt(view.target[0] + centreX, view.target[2] + centreY);
     const f = norm(sub([view.target[0], ty, view.target[2]], eye)), s = norm(cross(f, [0, 1, 0])), u = cross(s, f);
-    const d = norm([f[0] + s[0] * nx + u[0] * ny, f[1] + s[1] * nx + u[1] * ny, f[2] + s[2] * nx + u[2] * ny]);
+    return norm([f[0] + s[0] * nx + u[0] * ny, f[1] + s[1] * nx + u[1] * ny, f[2] + s[2] * nx + u[2] * ny]);
+  }
+  function terrainUnder(clientX, clientY) {
+    const d = sightLine(clientX, clientY);
     const above = t => eye[1] + d[1] * t - groundAt(eye[0] + d[0] * t + centreX, eye[2] + d[2] * t + centreY);
     // walk along the line of sight until it is below the ground, then narrow the step down
     const reach = view.distance * 6 + W.size, step = Math.max(view.distance / 150, 200);
@@ -833,10 +858,71 @@
       if (above(t) > 0) continue;
       let lo = t - step, hi = t;
       for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (above(mid) > 0) lo = mid; else hi = mid; }
-      return [eye[0] + d[0] * hi, eye[2] + d[2] * hi];
+      return [eye[0] + d[0] * hi, eye[2] + d[2] * hi, hi];
     }
     return null;
   }
+
+  // ---------------------------------------------------------------- click on a building: what the 2D map shows
+
+  const popup = $('terrain-popup');
+  let shown = null;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const metres = v => Math.round(v / 100).toLocaleString('en-US');
+  function closePopup() { shown = null; popup.hidden = true; }
+  function openPopup(p) {
+    const [x, y, , name, , group, details, iconIndex = -1] = p.item;
+    const rows = (details || []).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('');
+    const icon = iconIndex >= 0 && D.icons && D.icons[iconIndex] ? `<img class="popup-icon" src="${D.icons[iconIndex]}" alt="">` : '';
+    popup.innerHTML = `<button type="button" class="close" aria-label="Close">×</button>${icon}<h3>${esc(name)}</h3>`
+      + `<div class="sub">Building · ${esc(group)}<br>X ${metres(x)} m · Y ${metres(y)} m · Z ${metres(p.z - p.hz)} m</div>${rows ? `<table>${rows}</table>` : ''}`;
+    popup.querySelector('.close').addEventListener('click', closePopup);
+    shown = p;
+    popup.hidden = false;
+    needsDraw = true;
+  }
+  function placePopup() {
+    if (!shown) return;
+    if (!shown.layer.visible) return closePopup();
+    const at = project(shown.x, shown.z + shown.hz, shown.y);
+    popup.style.visibility = at ? 'visible' : 'hidden';
+    if (!at) return;
+    // above the building, but never outside the window
+    const w = popup.offsetWidth, h = popup.offsetHeight;
+    const left = Math.min(Math.max(at[0] - w / 2, 8), Math.max(canvas.clientWidth - w - 8, 8)), top = Math.min(Math.max(at[1] - h - 12, 8), Math.max(canvas.clientHeight - h - 8, 8));
+    popup.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    popup.classList.toggle('moved', Math.abs(left - (at[0] - w / 2)) > 1 || Math.abs(top - (at[1] - h - 12)) > 1);
+  }
+  /** The nearest clickable building on the line of sight, if it is in front of the terrain. */
+  function buildingUnder(clientX, clientY) {
+    const d = sightLine(clientX, clientY), ground = terrainUnder(clientX, clientY);
+    let best = null, nearest = ground ? ground[2] + 200 : Infinity;
+    for (const p of pickable) {
+      if (!p.layer || !p.layer.visible) continue;
+      // the line of sight in the box's own directions (game axes: x east, y south, z up)
+      const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+      const ox = eye[0] - p.x, oy = eye[2] - p.y, oz = eye[1] - p.z;
+      const o = [ox * c + oy * s, -ox * s + oy * c, oz], dir = [d[0] * c + d[2] * s, -d[0] * s + d[2] * c, d[1]], half = [p.hx, p.hy, p.hz];
+      let enter = 0, leave = nearest;
+      for (let a = 0; a < 3 && enter <= leave; a++) {
+        if (Math.abs(dir[a]) < 1e-9) { if (Math.abs(o[a]) > half[a]) enter = Infinity; continue; }
+        let t0 = (-half[a] - o[a]) / dir[a], t1 = (half[a] - o[a]) / dir[a];
+        if (t0 > t1) [t0, t1] = [t1, t0];
+        enter = Math.max(enter, t0); leave = Math.min(leave, t1);
+      }
+      if (enter <= leave && enter < nearest) { nearest = enter; best = p; }
+    }
+    return best;
+  }
+  let pressed = null;
+  canvas.addEventListener('pointerdown', e => { pressed = e.button === 0 && !e.shiftKey ? { x: e.clientX, y: e.clientY } : null; });
+  canvas.addEventListener('pointerup', e => {
+    if (!pressed || Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 4) return;
+    const hit = buildingUnder(e.clientX, e.clientY);
+    if (hit) openPopup(hit); else closePopup();
+  });
+  canvas.addEventListener('pointermove', e => { if (!pointers.size) canvas.style.cursor = pickable.length && buildingUnder(e.clientX, e.clientY) ? 'pointer' : ''; });
+  window.addEventListener('keydown', e => { if (e.key === 'Escape') closePopup(); });
   // The wheel zooms towards what is under the mouse: that point stays where it is on the screen.
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
@@ -863,7 +949,7 @@
   window.addEventListener('keydown', e => { if (e.key === 'f' && !e.ctrlKey && !e.metaKey) reset(); });
   $('terrain-reset').addEventListener('click', reset);
 
-  window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; }, models: modelCount, triangles: Math.round(triangleCount) }; // for automated tests and the console
+  window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; }, pickable: pickable.length, project, models: modelCount, triangles: Math.round(triangleCount) }; // for automated tests and the console
   status('');
   requestAnimationFrame(frame);
 })().catch(e => {
