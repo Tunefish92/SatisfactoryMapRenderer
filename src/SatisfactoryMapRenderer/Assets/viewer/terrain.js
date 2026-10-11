@@ -250,7 +250,9 @@
     if (!inspectAt.has(key)) inspectAt.set(key, []);
     inspectAt.get(key).push(item);
   }
-  const pickable = []; // buildings that can be clicked: their box in the world and what to show
+  const pickable = []; // buildings and resource nodes that can be clicked: their box in the world and what to show
+  const resourceMarkers = (D.markers || {}).resources || [];
+  const resourceLayer = (D.layers || []).find(l => l.id === 'resources');
 
   const meshInstances = []; // { layer, mesh, data: number[] } – 15 numbers per instance: matrix rows, colour
   let modelCount = 0, triangleCount = 0;
@@ -266,9 +268,26 @@
         const color = rgb[b[i + 14]], parts = partMatrices[b[i + 15]];
         const qx = b[i + 3] / 10000, qy = b[i + 4] / 10000, qz = b[i + 5] / 10000, qw = b[i + 6] / 10000;
         const known = inspectAt.get(b[i] + ',' + b[i + 1]);
+        if (layer.id === 'resources' && parts && parts.length && resourceMarkers.length) {
+          // a node's rock: what the 2D map says about the resource node standing closest to it
+          let best = null, distance = 2500;
+          for (const m of resourceMarkers) { const d = Math.hypot(m[0] - b[i], m[1] - b[i + 1], (m[2] - b[i + 2]) * 0.5); if (d < distance) { distance = d; best = m; } }
+          if (best) {
+            const mesh = F.meshes[parts[0].mesh], sx = b[i + 7] / 1000, sy = b[i + 8] / 1000, sz = b[i + 9] / 1000;
+            const yaw = Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz)), c = Math.cos(yaw), sn = Math.sin(yaw);
+            const lx = (mesh[5] + mesh[8] / 2) * sx, ly = (mesh[6] + mesh[9] / 2) * sy;
+            const legend = resourceLayer && resourceLayer.legend[best[5]];
+            pickable.push({
+              info: { name: best[3], subtitle: legend ? `${resourceLayer.title} · ${legend[0]}` : 'Resource node', x: best[0], y: best[1], z: best[2], details: best[7], icon: best[8] },
+              layer: null, x: b[i] - centreX + lx * c - ly * sn, y: b[i + 1] - centreY + lx * sn + ly * c, z: b[i + 2] + (mesh[7] + mesh[10] / 2) * sz,
+              hx: mesh[8] / 2 * sx, hy: mesh[9] / 2 * sy, hz: Math.max(mesh[10] / 2 * sz, 80), yaw,
+            });
+          }
+        }
         if (known && known.length) {
+          const item = known.shift();
           pickable.push({
-            item: known.shift(), layer: null, x: b[i] - centreX, y: b[i + 1] - centreY, z: b[i + 2] + b[i + 13] + b[i + 12] / 2,
+            info: { name: item[3], subtitle: `Building · ${item[5]}`, x: item[0], y: item[1], z: b[i + 2], details: item[6], icon: item[7] ?? -1 }, layer: null, x: b[i] - centreX, y: b[i + 1] - centreY, z: b[i + 2] + b[i + 13] + b[i + 12] / 2,
             hx: b[i + 10] / 2 * b[i + 7] / 1000, hy: b[i + 11] / 2 * b[i + 8] / 1000, hz: b[i + 12] / 2 * b[i + 9] / 1000,
             yaw: Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz)), first: pickable.length,
           });
@@ -892,11 +911,11 @@
   const metres = v => Math.round(v / 100).toLocaleString('en-US');
   function closePopup() { shown = null; popup.hidden = true; }
   function openPopup(p) {
-    const [x, y, , name, , group, details, iconIndex = -1] = p.item;
+    const { name, subtitle, x, y, z, details, icon: iconIndex } = p.info;
     const rows = (details || []).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('');
     const icon = iconIndex >= 0 && D.icons && D.icons[iconIndex] ? `<img class="popup-icon" src="${D.icons[iconIndex]}" alt="">` : '';
     popup.innerHTML = `<button type="button" class="close" aria-label="Close">×</button>${icon}<h3>${esc(name)}</h3>`
-      + `<div class="sub">Building · ${esc(group)}<br>X ${metres(x)} m · Y ${metres(y)} m · Z ${metres(p.z - p.hz)} m</div>${rows ? `<table>${rows}</table>` : ''}`;
+      + `<div class="sub">${esc(subtitle)}<br>X ${metres(x)} m · Y ${metres(y)} m · Z ${metres(z)} m</div>${rows ? `<table>${rows}</table>` : ''}`;
     popup.querySelector('.close').addEventListener('click', closePopup);
     shown = p;
     popup.hidden = false;

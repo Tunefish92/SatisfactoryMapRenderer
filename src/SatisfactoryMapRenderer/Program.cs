@@ -19,11 +19,9 @@ internal static class Program
           -o, --output <dir>        Output directory (default: <save name>_map next to the save)
           -z, --max-zoom <3-9>      Highest rendered zoom level (default: 9, about 6 cm per pixel)
           -b, --background <image>  Use this image as the map instead of the game's own map
-              --realistic <image>   A second, selectable base map (same area as --background), e.g. a realistic render
-              --maps <dir>          Folder with game-map.jpg, ground-map.jpg, relief-map.jpg and realistic-map.jpg.
-                                    They replace the game's own map, ground map and relief map and add a
-                                    realistic one, unless the options above are given (default: maps in the
-                                    current directory)
+              --maps <dir>          Folder with game-map.jpg, ground-map.jpg and relief-map.jpg. They replace the
+                                    game's own map, ground map and relief map (default: maps in the current
+                                    directory)
               --render-ground-map <file>
                                     Only draw the ground map (the world from above without any factory) into
                                     this .jpg, or .ppm for sizes above 16384, and stop
@@ -31,7 +29,7 @@ internal static class Program
               --dump-json [file]    Also write every decoded object with all properties as JSON
           -h, --help                Show this help
 
-        Game assets (realistic map, icons, resource purities from your own installation):
+        Game assets (maps, icons, resource purities from your own installation):
           -g, --game <dir>          Satisfactory installation (default: found via Epic/Steam)
               --no-game             Do not read the game installation
               --oodle <dll>         Oodle library to use instead of downloading it once
@@ -60,7 +58,6 @@ internal static class Program
         public string? Output { get; set; }
         public int MaxZoom { get; set; } = 9;
         public string? Background { get; set; }
-        public string? Realistic { get; set; }
         public string? Relief { get; set; }
         public string? Ground { get; set; }
         public string? RenderGroundMap { get; set; }
@@ -135,9 +132,6 @@ internal static class Program
                     break;
                 case "-b" or "--background":
                     o.Background = Next();
-                    break;
-                case "--realistic":
-                    o.Realistic = Next();
                     break;
                 case "--maps":
                     o.MapsDirectory = Next();
@@ -218,14 +212,11 @@ internal static class Program
             throw new ArgumentException($"Save file not found: {savePath}");
         if (o.Background is not null && !File.Exists(o.Background))
             throw new ArgumentException($"Background image not found: {o.Background}");
-        if (o.Realistic is not null && !File.Exists(o.Realistic))
-            throw new ArgumentException($"Realistic map image not found: {o.Realistic}");
         if (o.OodleLibrary is not null && !File.Exists(o.OodleLibrary))
             throw new ArgumentException($"Oodle library not found: {o.OodleLibrary}");
 
-        // Map images kept in the maps folder take the place of the game's own map and of --realistic.
+        // Map images kept in the maps folder take the place of the game's own maps.
         o.Background ??= ExistingFile(Path.Combine(o.MapsDirectory, GameMapFile));
-        o.Realistic ??= ExistingFile(Path.Combine(o.MapsDirectory, RealisticMapFile));
         o.Relief = ExistingFile(Path.Combine(o.MapsDirectory, ReliefMapFile));
         o.Ground = ExistingFile(Path.Combine(o.MapsDirectory, GroundMapFile));
 
@@ -243,7 +234,6 @@ internal static class Program
     /// <summary>Stands in for the save path when only --export-game-data was asked for.</summary>
     private const string ExportOnly = "<export>";
     private const string GameMapFile = "game-map.jpg";
-    private const string RealisticMapFile = "realistic-map.jpg";
     private const string ReliefMapFile = "relief-map.jpg";
     private const string GroundMapFile = "ground-map.jpg";
 
@@ -355,13 +345,11 @@ internal static class Program
             Console.WriteLine($"Relief map from {o.Relief}");
         if (o.Ground is not null)
             Console.WriteLine($"Ground map from {o.Ground}");
-        if (o.Realistic is not null)
-            Console.WriteLine($"Realistic map from {o.Realistic}");
         Console.WriteLine($"Rendering to {o.Output}");
         // The exporter reports each finished tile layer ("  Buildings: ... tiles"); those lines drive the bar.
         int layersDone = 0, layersTotal = Layers.All.Count(l => l.Kind == LayerKind.Raster);
         progress?.Invoke("Drawing the map", 25);
-        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Realistic, o.Relief, o.Ground), message =>
+        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Relief, o.Ground), message =>
         {
             Console.WriteLine(message);
             if (message.StartsWith("  ", StringComparison.Ordinal) && message.Contains(':'))
@@ -402,7 +390,7 @@ internal static class Program
         }
         if (installation is null)
         {
-            Console.WriteLine("Game assets: no Satisfactory installation found (use --game <dir>); rendering without the realistic map and icons.");
+            Console.WriteLine("Game assets: no Satisfactory installation found (use --game <dir>); rendering without the game's maps and icons.");
             return null;
         }
 

@@ -996,7 +996,26 @@ body.terrain-page { overflow: hidden; }
 #terrain-status { position: fixed; left: 50%; bottom: 20px; z-index: 10; transform: translateX(-50%); box-shadow: var(--shadow-md); }
 
 /* Button on the 2D map that opens the 3D view */
-.leaflet-bar a.view-3d { font: 700 12px var(--font-heading); letter-spacing: 0.02em; }
+.leaflet-container a.view-3d {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 12px;
+  border-radius: var(--r-full);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-ii));
+  color: var(--color-primary-text);
+  font: 600 14px var(--font-heading);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(255, 255, 255, 0.18) inset;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), filter var(--dur) var(--ease);
+}
+.leaflet-container a.view-3d:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.25) inset; }
+.leaflet-container a.view-3d:active { transform: translateY(0); filter: brightness(0.96); }
+.leaflet-container a.view-3d:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.leaflet-container a.view-3d svg { flex: none; }
 
 #factory-layers .option { justify-content: flex-start; }
 #factory-layers .count { margin-left: auto; color: var(--color-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

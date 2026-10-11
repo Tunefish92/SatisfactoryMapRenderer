@@ -59,14 +59,13 @@
   if (D.terrain) {
     const Button3D = L.Control.extend({
       onAdd() {
-        const bar = L.DomUtil.create('div', 'leaflet-bar');
-        const link = L.DomUtil.create('a', 'view-3d', bar);
+        const link = L.DomUtil.create('a', 'view-3d');
         link.href = 'terrain.html';
-        link.title = 'Open the 3D view';
-        link.setAttribute('aria-label', 'Open the 3D view');
-        link.textContent = '3D';
-        L.DomEvent.disableClickPropagation(bar);
-        return bar;
+        link.title = 'Open the 3D view: the world and your factory in the game\'s own models';
+        link.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2.5 3.5 7.2v9.6L12 21.5l8.5-4.7V7.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>'
+          + '<path d="M3.5 7.2 12 12l8.5-4.8M12 12v9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg><span>3D view</span>';
+        L.DomEvent.disableClickPropagation(link);
+        return link;
       },
     });
     new Button3D({ position: 'topleft' }).addTo(map);
@@ -352,8 +351,8 @@
   }
 
   // Base maps share one dropdown: the game map (or the explored outline without game data), the same
-  // map with shaded relief, and, when rendered with --realistic <image>, a realistic map.
-  const BASE_MAPS = ['ground', 'background', 'relief', 'realistic', 'explored'];
+  // map with shaded relief.
+  const BASE_MAPS = ['ground', 'background', 'relief', 'explored'];
   const baseMaps = BASE_MAPS.filter(id => handles[id]).map(id => ({
     id, title: D.layers.find(l => l.id === id).title, leaflet: handles[id].leaflet,
   }));

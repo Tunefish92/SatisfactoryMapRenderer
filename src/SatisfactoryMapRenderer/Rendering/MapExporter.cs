@@ -7,7 +7,7 @@ using SkiaSharp;
 namespace SatisfactoryMapRenderer.Rendering;
 
 /// <param name="BackgroundImage">Explicit map image; otherwise the game's own map is used when available.</param>
-public sealed record ExportOptions(string OutputDirectory, int MaxZoom, string? BackgroundImage, GameAssets? Game = null, string? RealisticImage = null, string? ReliefImage = null, string? GroundImage = null);
+public sealed record ExportOptions(string OutputDirectory, int MaxZoom, string? BackgroundImage, GameAssets? Game = null, string? ReliefImage = null, string? GroundImage = null);
 
 /// <summary>Renders all tile layers and writes the HTML viewer.</summary>
 public static class MapExporter
@@ -32,8 +32,11 @@ public static class MapExporter
 
         string? backgroundPath = options.BackgroundImage ?? options.Game?.MapImagePath;
         string? reliefPath = options.ReliefImage ?? options.Game?.ReliefImagePath;
+        // a base map earlier versions offered
+        if (Directory.Exists(Path.Combine(tilesDir, "realistic")))
+            Directory.Delete(Path.Combine(tilesDir, "realistic"), recursive: true);
         string? groundPath = options.GroundImage ?? options.Game?.GroundMapPath;
-        foreach (var (layer, image) in new[] { (Layers.Ground, groundPath), (Layers.Background, backgroundPath), (Layers.Relief, reliefPath), (Layers.Realistic, options.RealisticImage) })
+        foreach (var (layer, image) in new[] { (Layers.Ground, groundPath), (Layers.Background, backgroundPath), (Layers.Relief, reliefPath) })
         {
             string layerDir = Path.Combine(tilesDir, layer.Id);
             if (image is null)
@@ -73,7 +76,7 @@ public static class MapExporter
     }
 
     /// <summary>Base maps cut from an image; they do not depend on the save and are kept between renders.</summary>
-    private static readonly LayerDef[] BaseMaps = [Layers.Ground, Layers.Background, Layers.Relief, Layers.Realistic];
+    private static readonly LayerDef[] BaseMaps = [Layers.Ground, Layers.Background, Layers.Relief];
 
     private const string SourceStamp = ".source";
 

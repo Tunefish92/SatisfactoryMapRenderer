@@ -17,7 +17,6 @@ public static class Layers
     public static readonly LayerDef Background = new("background", "Game map", "Base", LayerKind.Raster, true, "#34495e", "The in-game map from your installation, or the --background image");
     public static readonly LayerDef Ground = new("ground", "Ground map", "Base", LayerKind.Raster, false, "#6f8f5a", "The world from above without any factory, made from the game's ground textures, water and heights");
     public static readonly LayerDef Relief = new("relief", "Relief map", "Base", LayerKind.Raster, false, "#7a8f6a", "The in-game map with the terrain shaded from the game's height data");
-    public static readonly LayerDef Realistic = new("realistic", "Realistic map", "Base", LayerKind.Raster, false, "#3f6b4f", "The --realistic image, e.g. a satellite-style render of the world");
     public static readonly LayerDef Explored = new("explored", "Explored area", "Base", LayerKind.Raster, true, "#3d5a45", "Fog of war from the in-game map");
     public static readonly LayerDef FogOfWar = new("fog", "Fog of war", "Base", LayerKind.Raster, false, "#10151b", "Darkens the areas not explored yet");
     public static readonly LayerDef Foundations = new("foundations", "Foundations & walls", "Factory", LayerKind.Raster, true, "#8b939c", "Foundations, ramps, walls, walkways");
@@ -46,7 +45,7 @@ public static class Layers
 
     public static readonly IReadOnlyList<LayerDef> All =
     [
-        Ground, Background, Relief, Realistic, Explored, FogOfWar,
+        Ground, Background, Relief, Explored, FogOfWar,
         Foundations, Buildings, Pipes, Belts, Railways, Power, Landmarks, Stations, Beacons,
         Players, Vehicles, Creatures, Spawners,
         Resources, Deposits,

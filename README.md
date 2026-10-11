@@ -176,7 +176,7 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
 in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
-The **3D** button under the zoom buttons opens the 3D view: the game's height data as a landscape, and
+The **3D view** button under the zoom buttons opens the 3D view: the game's height data as a landscape, and
 the factory in the game's own 3D models, placed with the positions and rotations from the save. The
 ground shows the game's own ground textures where the game's landscape has them painted, with the sea, lakes
 and rivers as water; untick **Realistic ground** to see the in-game map on the terrain instead. Steep faces get
@@ -187,7 +187,8 @@ standard orange), and conveyor lifts are built from the game's end and middle pi
 at their real heights, and the few building types without a
 model are boxes. The rocks, crystals and
 vents of the world's resource nodes stand where the game has them, with their textures. Click a
-building to see what the 2D map shows about it (recipe, power, contents). Drag to
+building or a resource node to see what the 2D map shows about it (recipe, power, contents; resource, purity,
+whether it is in use). Drag to
 rotate, drag with the wheel button or Shift+drag to move, wheel to zoom towards the mouse; each factory layer can be switched off. Heights are
 the real ones, not exaggerated. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
 
@@ -201,9 +202,9 @@ read-only at `/game` (the folder that contains `FactoryGame` and `CommunityResou
 then on is used instead of the bundled data. The mount can be removed again afterwards.
 
 Optional images in `map-data/maps/` replace or add base maps, each covering the whole in-game map area:
-`game-map.jpg` (used instead of the bundled in-game map), `relief-map.jpg` (used instead of the bundled relief map,
-for example a higher-resolution one) and `realistic-map.jpg` (offered as a further base map in the *Map*
-dropdown).
+`game-map.jpg` (used instead of the bundled in-game map), `ground-map.jpg` (used instead of the bundled ground
+map, for example a larger one made with `--render-ground-map`) and `relief-map.jpg` (used instead of the bundled
+relief map).
 
 ## Settings
 

@@ -10,7 +10,7 @@
 # Layout of the data folder:
 #   map/        the rendered map that is served
 #   gamedata/   your own export of the game's icons and level data (optional; replaces the bundled one)
-#   maps/       game-map.jpg and realistic-map.jpg (optional)
+#   maps/       game-map.jpg, ground-map.jpg and relief-map.jpg (optional)
 #   cache/      save game source settings, fetched saves
 #   home/       home of the app user; home/.ssh holds the keys for the SSH source
 set -e

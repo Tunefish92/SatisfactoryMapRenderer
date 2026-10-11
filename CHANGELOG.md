@@ -13,6 +13,9 @@
 * Ground map: a new base map of the 2D view and its default, the world from above without any factory, made
   from the game's ground textures, water surfaces and heights. Bundled at 8192 px; `--render-ground-map`
   draws it at any size, and `maps/ground-map.jpg` replaces the bundled one.
+* 3D view: resource nodes are clickable and show resource, purity and whether they are in use.
+* The 3D button on the map is a labelled button in the accent colour.
+* Removed: the "Realistic map" base map and the `--realistic` option; the ground map takes its place.
 * 3D view: the resource nodes of the world (ore rocks, coal, quartz, SAM, sulfur, limestone, fracking vents) in
   the game's own models and textures, as a layer of their own. The game's virtual textures can now be read,
   which these use.
