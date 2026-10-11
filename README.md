@@ -179,8 +179,8 @@ The **3D** button under the zoom buttons opens the 3D view: the game's height da
 on it, and the factory in the game's own 3D models, placed with the positions and rotations from the save. The
 models are shown without textures, in a light tone with a hint of the 2D map's colours. Belts, pipes, rails and
 wires are simple strips at their real heights, and the few building types without a model are boxes. Drag to
-rotate, right-drag or Shift+drag to move, wheel to zoom; a slider exaggerates the heights and each factory
-layer can be switched off. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
+rotate, right-drag or Shift+drag to move, wheel to zoom; each factory layer can be switched off. Heights are
+the real ones, not exaggerated. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
 
 The *Map* dropdown on the Layers tab switches between the **game map** and a **relief map**: the same map with the
 terrain shaded from the game's own height data, so mountains, cliffs, canyons and craters stand out.

@@ -945,10 +945,6 @@ body.terrain-page { overflow: hidden; }
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow-md);
 }
-.terrain-slider { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; font-size: 12.5px; color: var(--color-text-muted); }
-.terrain-slider span { display: flex; justify-content: space-between; }
-.terrain-slider output { color: var(--color-text); font-variant-numeric: tabular-nums; }
-.terrain-slider input { width: 100%; accent-color: var(--color-primary); }
 #terrain-panel button { margin-top: 12px; padding: 6px 14px; font-size: 12.5px; }
 #terrain-labels { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
 .terrain-label {

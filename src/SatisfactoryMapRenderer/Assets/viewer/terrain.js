@@ -96,13 +96,13 @@
     layout(location = 1) in float height;
     layout(location = 2) in vec2 slope;
     uniform mat4 viewProjection;
-    uniform float worldSize, exaggeration;
+    uniform float worldSize;
     out vec2 vUv;
     out vec3 vNormal, vWorld;
     void main() {
       // x east, y up, z south; the world is centred on the origin
-      vWorld = vec3((uv.x - 0.5) * worldSize, height * exaggeration, (uv.y - 0.5) * worldSize);
-      vNormal = normalize(vec3(-slope.x * exaggeration, 1.0, -slope.y * exaggeration));
+      vWorld = vec3((uv.x - 0.5) * worldSize, height, (uv.y - 0.5) * worldSize);
+      vNormal = normalize(vec3(-slope.x, 1.0, -slope.y));
       vUv = uv;
       gl_Position = viewProjection * vec4(vWorld, 1.0);
     }`, `#version 300 es
@@ -256,7 +256,6 @@
     layout(location = 4) in vec2 turn;     // yaw, pitch
     layout(location = 5) in vec3 tint;
     uniform mat4 viewProjection;
-    uniform float exaggeration;
     out vec3 vNormal, vWorld, vTint;
     vec3 turned(vec3 v) {
       float cp = cos(turn.y), sp = sin(turn.y), cy = cos(turn.x), sy = sin(turn.x);
@@ -265,7 +264,7 @@
     }
     void main() {
       vec3 p = centre + turned(corner * halfSize);
-      vWorld = vec3(p.x, p.y * exaggeration, p.z);
+      vWorld = p;
       vNormal = turned(normal);
       vTint = tint;
       gl_Position = viewProjection * vec4(vWorld, 1.0);
@@ -318,12 +317,11 @@
     layout(location = 5) in vec3 tint;
     uniform mat4 viewProjection;
     uniform vec3 boundsMin, boundsSize;
-    uniform float exaggeration;
     out vec3 vNormal, vWorld, vTint;
     void main() {
       vec4 local = vec4(boundsMin + (position + 32768.0) / 65535.0 * boundsSize, 1.0);
       vec3 p = vec3(dot(row0, local), dot(row1, local), dot(row2, local));
-      vWorld = vec3(p.x, p.z * exaggeration, p.y);
+      vWorld = vec3(p.x, p.z, p.y);
       vec3 n = vec3(dot(row0.xyz, normal), dot(row1.xyz, normal), dot(row2.xyz, normal));
       vNormal = vec3(n.x, n.z, n.y);
       vTint = tint;
@@ -442,9 +440,8 @@
 
   let matrix = new Float32Array(16), eye = [0, 0, 0];
   function updateCamera() {
-    const e = +$('exaggeration').value;
     const tx = view.target[0], tz = view.target[2];
-    const ty = groundAt(tx + W.minX + W.size / 2, tz + W.minY + W.size / 2) * e;
+    const ty = groundAt(tx + W.minX + W.size / 2, tz + W.minY + W.size / 2);
     const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
     eye = [tx + view.distance * cp * Math.sin(view.yaw), ty + view.distance * sp, tz + view.distance * cp * Math.cos(view.yaw)];
     const f = norm(sub([tx, ty, tz], eye)), s = norm(cross(f, [0, 1, 0])), u = cross(s, f);
@@ -475,11 +472,11 @@
     }
   }
   function placeLabels() {
-    const e = +$('exaggeration').value, show = $('opt-markers').checked;
+    const show = $('opt-markers').checked;
     for (const l of labels) {
       // The marker's own height, but never below the ground the view draws there.
       const ground = groundAt(l.x, l.y);
-      const p = show && project(l.x - (W.minX + W.size / 2), Math.max(l.z, ground) * e, l.y - (W.minY + W.size / 2));
+      const p = show && project(l.x - (W.minX + W.size / 2), Math.max(l.z, ground), l.y - (W.minY + W.size / 2));
       l.el.hidden = !p || p[0] < -50 || p[1] < -20 || p[0] > canvas.clientWidth + 50 || p[1] > canvas.clientHeight + 20;
       if (!l.el.hidden) l.el.style.transform = `translate(${Math.round(p[0])}px, ${Math.round(p[1])}px) translate(-50%, -130%)`;
     }
@@ -502,7 +499,6 @@
     const u = name => gl.getUniformLocation(terrain, name);
     gl.uniformMatrix4fv(u('viewProjection'), false, matrix);
     gl.uniform1f(u('worldSize'), W.size);
-    gl.uniform1f(u('exaggeration'), +$('exaggeration').value);
     gl.uniform1i(u('map'), 0);
     gl.uniform1i(u('overlay'), 1);
     gl.uniform1f(u('overlayOpacity'), $('opt-factory').checked ? 1 : 0);
@@ -516,7 +512,6 @@
       gl.useProgram(boxes);
       const b = name => gl.getUniformLocation(boxes, name);
       gl.uniformMatrix4fv(b('viewProjection'), false, matrix);
-      gl.uniform1f(b('exaggeration'), +$('exaggeration').value);
       gl.uniform3fv(b('eye'), eye);
       gl.uniform3fv(b('sun'), norm([-0.55, 0.62, -0.55]));
       gl.uniform3fv(b('haze'), sky);
@@ -530,7 +525,6 @@
         gl.useProgram(models);
         const m = name => gl.getUniformLocation(models, name);
         gl.uniformMatrix4fv(m('viewProjection'), false, matrix);
-        gl.uniform1f(m('exaggeration'), +$('exaggeration').value);
         gl.uniform3fv(m('eye'), eye);
         gl.uniform3fv(m('sun'), norm([-0.55, 0.62, -0.55]));
         gl.uniform3fv(m('haze'), sky);
@@ -607,7 +601,6 @@
     clampView();
   });
 
-  $('exaggeration').addEventListener('input', () => { $('exaggeration-value').textContent = `${(+$('exaggeration').value).toFixed(1)}×`; needsDraw = true; });
   for (const id of ['opt-factory', 'opt-markers']) $(id).addEventListener('change', () => { needsDraw = true; });
   window.addEventListener('keydown', e => { if (e.key === 'f' && !e.ctrlKey && !e.metaKey) reset(); });
   $('terrain-reset').addEventListener('click', reset);
