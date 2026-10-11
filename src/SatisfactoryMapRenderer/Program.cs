@@ -20,9 +20,14 @@ internal static class Program
           -z, --max-zoom <3-9>      Highest rendered zoom level (default: 9, about 6 cm per pixel)
           -b, --background <image>  Use this image as the map instead of the game's own map
               --realistic <image>   A second, selectable base map (same area as --background), e.g. a realistic render
-              --maps <dir>          Folder with game-map.jpg, relief-map.jpg and realistic-map.jpg. They replace the
-                                    game's own map and relief map and add a realistic one, unless the options
-                                    above are given (default: maps in the current directory)
+              --maps <dir>          Folder with game-map.jpg, ground-map.jpg, relief-map.jpg and realistic-map.jpg.
+                                    They replace the game's own map, ground map and relief map and add a
+                                    realistic one, unless the options above are given (default: maps in the
+                                    current directory)
+              --render-ground-map <file>
+                                    Only draw the ground map (the world from above without any factory) into
+                                    this .jpg, or .ppm for sizes above 16384, and stop
+              --ground-map-size <px>  Edge length of that image (default: 16384)
               --dump-json [file]    Also write every decoded object with all properties as JSON
           -h, --help                Show this help
 
@@ -57,6 +62,9 @@ internal static class Program
         public string? Background { get; set; }
         public string? Realistic { get; set; }
         public string? Relief { get; set; }
+        public string? Ground { get; set; }
+        public string? RenderGroundMap { get; set; }
+        public int GroundMapSize { get; set; } = GroundMapRenderer.MaxJpegSize;
         public string MapsDirectory { get; set; } = "maps";
         public bool DumpJson { get; set; }
         public string? DumpJsonPath { get; set; }
@@ -168,6 +176,13 @@ internal static class Program
                 case "--game-data":
                     o.GameDataDirectory = Next();
                     break;
+                case "--render-ground-map":
+                    o.RenderGroundMap = Path.GetFullPath(Next());
+                    break;
+                case "--ground-map-size":
+                    o.GroundMapSize = int.TryParse(Next(), out int groundSize) && groundSize is >= 256 and <= 65536
+                        ? groundSize : throw new ArgumentException("--ground-map-size must be between 256 and 65536.");
+                    break;
                 case "--export-game-data":
                     o.ExportGameData = true;
                     break;
@@ -182,6 +197,11 @@ internal static class Program
             }
         }
 
+        if (o.RenderGroundMap is not null && savePath is null)
+        {
+            o.SavePath = ExportOnly;
+            return o;
+        }
         if (o.ExportGameData && savePath is null)
         {
             o.SavePath = ExportOnly;
@@ -207,6 +227,7 @@ internal static class Program
         o.Background ??= ExistingFile(Path.Combine(o.MapsDirectory, GameMapFile));
         o.Realistic ??= ExistingFile(Path.Combine(o.MapsDirectory, RealisticMapFile));
         o.Relief = ExistingFile(Path.Combine(o.MapsDirectory, ReliefMapFile));
+        o.Ground = ExistingFile(Path.Combine(o.MapsDirectory, GroundMapFile));
 
         if (savePath is null)
         {
@@ -224,6 +245,7 @@ internal static class Program
     private const string GameMapFile = "game-map.jpg";
     private const string RealisticMapFile = "realistic-map.jpg";
     private const string ReliefMapFile = "relief-map.jpg";
+    private const string GroundMapFile = "ground-map.jpg";
 
     private static string? ExistingFile(string path) => File.Exists(path) ? Path.GetFullPath(path) : null;
 
@@ -245,6 +267,13 @@ internal static class Program
                 return;
         }
         using var game = LoadGameAssets(o);
+        if (o.RenderGroundMap is not null)
+        {
+            if (game is null || !GroundMapRenderer.Render(game, o.RenderGroundMap, o.GroundMapSize, Console.WriteLine))
+                Environment.ExitCode = 1;
+            if (o.SavePath == ExportOnly)
+                return;
+        }
         if (o.ServePort is { } port)
         {
             Serve(o, game, port);
@@ -324,13 +353,15 @@ internal static class Program
             Console.WriteLine($"Game map from {o.Background}");
         if (o.Relief is not null)
             Console.WriteLine($"Relief map from {o.Relief}");
+        if (o.Ground is not null)
+            Console.WriteLine($"Ground map from {o.Ground}");
         if (o.Realistic is not null)
             Console.WriteLine($"Realistic map from {o.Realistic}");
         Console.WriteLine($"Rendering to {o.Output}");
         // The exporter reports each finished tile layer ("  Buildings: ... tiles"); those lines drive the bar.
         int layersDone = 0, layersTotal = Layers.All.Count(l => l.Kind == LayerKind.Raster);
         progress?.Invoke("Drawing the map", 25);
-        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Realistic, o.Relief), message =>
+        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Realistic, o.Relief, o.Ground), message =>
         {
             Console.WriteLine(message);
             if (message.StartsWith("  ", StringComparison.Ordinal) && message.Contains(':'))

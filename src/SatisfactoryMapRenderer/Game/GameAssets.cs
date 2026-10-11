@@ -84,6 +84,11 @@ public sealed class GameAssets : IDisposable
     public GroundInfo? Ground => _ground ??= GameGround.TryLoad(CacheDirectory);
     public string GroundDirectory => Path.Combine(CacheDirectory, GameGround.Directory);
     private GroundInfo? _ground;
+    /// <summary>The world from above without any factory, as a base map of the 2D view; null without game data that has it.</summary>
+    public string? GroundMapPath => File.Exists(Path.Combine(CacheDirectory, GroundMapFileName)) ? Path.Combine(CacheDirectory, GroundMapFileName) : null;
+    private const string GroundMapFileName = "ground-map.jpg";
+    /// <summary>Edge length of the ground map kept with the game data; larger ones are made with --render-ground-map.</summary>
+    private const int GroundMapSize = 8192;
     private const string TerrainInfoFileName = "terrain.json";
     private const string HeightData = "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test.HeightData_Test";
     public string? MapImagePath => Data.MapImage is { } name && File.Exists(Path.Combine(CacheDirectory, name)) ? Path.Combine(CacheDirectory, name) : null;
@@ -175,6 +180,8 @@ public sealed class GameAssets : IDisposable
             foreach (string file in Directory.GetFiles(GroundDirectory))
                 File.Copy(file, Path.Combine(ground, Path.GetFileName(file)));
         }
+        if (GroundMapPath is { } groundMap)
+            File.Copy(groundMap, Path.Combine(directory, GroundMapFileName), overwrite: true);
         if (TerrainHeightsPath is { } heights)
         {
             File.Copy(heights, Path.Combine(directory, HeightsFileName), overwrite: true);
@@ -226,6 +233,8 @@ public sealed class GameAssets : IDisposable
         {
             _ground = GameGround.Extract(Archive, CacheDirectory, _log, TerrainHeightsPath is { } heights
                 ? (heights, TerrainInfoPath, World.WorldBounds.MinX, World.WorldBounds.MinY, World.WorldBounds.Size) : null);
+            if (_ground is not null)
+                Rendering.GroundMapRenderer.Render(this, Path.Combine(CacheDirectory, GroundMapFileName), GroundMapSize, _log);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

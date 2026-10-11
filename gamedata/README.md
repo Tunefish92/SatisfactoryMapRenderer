@@ -1,7 +1,7 @@
 # Game data
 
 Icons, item and building names, level data (resource nodes, collectibles, spawners), the game's logo, the
-in-game map, the world's height data, a relief map made from both and simplified 3D models of the buildables with reduced textures, the ground textures with the map of where they lie,
+in-game map, the world's height data, a relief map made from both and simplified 3D models of the buildables with reduced textures, the ground textures with the map of where they lie, a ground map drawn from them,
 exported from **Satisfactory 1.2.4** (build 502094) with
 
 ```

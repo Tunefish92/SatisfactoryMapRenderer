@@ -10,6 +10,10 @@
   surfaces. "Realistic ground" in the 3D view switches back to the in-game map.
 * 3D view: conveyor belts, pipes, hypertubes and railway tracks in the game's own models and textures, laid
   along their paths piece by piece as in the game.
+* Ground map: a new base map of the 2D view and its default, the world from above without any factory, made
+  from the game's ground textures, water surfaces and heights. Bundled at 8192 px; `--render-ground-map`
+  draws it at any size, and `maps/ground-map.jpg` replaces the bundled one.
+* 3D view: water no longer shows under rocks and plateaus that cover it.
 * 3D view: conveyor lifts in the game's own pieces; arms and other animated parts of machines (quantum
   encoder, space elevator); buildings made from another building show its parts too (power tower with
   platform); pipeline pumps Mk.2 are found despite the game's two spellings of their name.

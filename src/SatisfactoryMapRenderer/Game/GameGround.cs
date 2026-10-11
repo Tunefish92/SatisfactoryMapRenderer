@@ -36,6 +36,8 @@ public static class GameGround
     private const string TextureRoot = "/Game/FactoryGame/World/Environment/Landscape/Texture/Tiles/";
     private const int TileQuads = 127, TileSamples = 128, Step = 2, None = 15;
     private const double DepthStep = 25, TextureTile = 600;
+    /// <summary>A surface this far (cm) above the water hides it.</summary>
+    private const float CoveredBy = 400;
     private const int TextureSize = 512;
 
     /// <summary>
@@ -206,12 +208,20 @@ public static class GameGround
                 Interlocked.Increment(ref covered);
             }
         });
-        FillSea(surface, ground, width, height, water.Where(t => t.Sea).Select(t => t.A.Z).DefaultIfEmpty(float.NaN).Order().ElementAt(water.Count(t => t.Sea) / 2));
         if (heights is { } h)
             Calibrate(ground, surface, width, height, worldX, worldY, cell, h, log);
+        float seaLevel = water.Where(t => t.Sea).Select(t => t.A.Z).DefaultIfEmpty(float.NaN).Order().ElementAt(water.Count(t => t.Sea) / 2);
+        // Water under rocks cannot be seen from above: where the surface the height image shows lies clearly
+        // above a water surface, the place counts as dry, and the sea does not reach past it.
+        float[]? top = heights is { } shown ? Surface(shown, width, height, worldX, worldY, cell) : null;
+        if (top is not null)
+            for (int i = 0; i < top.Length; i++)
+                if (top[i] > surface[i] + CoveredBy)
+                    surface[i] = float.MinValue;
+        FillSea(surface, ground, top, width, height, seaLevel);
         for (int i = 0; i < ground.Length; i++)
         {
-            if (float.IsNaN(ground[i]) || surface[i] <= ground[i])
+            if (float.IsNaN(ground[i]) || surface[i] <= ground[i] || map[i * 3] >> 4 == None)
                 continue;
             map[i * 3 + 2] = (byte)Math.Clamp(Math.Ceiling((surface[i] - ground[i]) / DepthStep), 1, 255);
             wet++;
@@ -359,6 +369,30 @@ public static class GameGround
         log($"  Terrain heights: set to the landscape, {b / 100:0} m to {(a + b) / 100:0} m (from {used.Count:N0} of {samples.Count:N0} samples, ±{deviation / 100:0.0} m)");
     }
 
+    /// <summary>Per sample of the ground map the height (cm) of what the height image shows there: terrain, rocks, water.</summary>
+    private static float[]? Surface((string Image, string Info, double MinX, double MinY, double Size) heights, int width, int height, double worldX, double worldY, double cell)
+    {
+        using var image = SKBitmap.Decode(heights.Image);
+        if (image is null || !File.Exists(heights.Info))
+            return null;
+        var info = JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(heights.Info));
+        double zAt0 = info.GetProperty("zAt0").GetDouble(), zAt1 = info.GetProperty("zAt1").GetDouble();
+        using var rgba = image.Copy(SKColorType.Rgba8888);
+        byte[] packed = rgba.Bytes;
+        int size = image.Width;
+        float[] surface = new float[width * height];
+        Parallel.For(0, height, v =>
+        {
+            int py = Math.Clamp((int)Math.Round((worldY + v * cell - heights.MinY) / heights.Size * (size - 1)), 0, size - 1);
+            for (int u = 0; u < width; u++)
+            {
+                int px = Math.Clamp((int)Math.Round((worldX + u * cell - heights.MinX) / heights.Size * (size - 1)), 0, size - 1), i = (py * size + px) * 4;
+                surface[v * width + u] = (float)(zAt0 + (packed[i] * 256 + packed[i + 1]) / 65535.0 * (zAt1 - zAt0));
+            }
+        });
+        return surface;
+    }
+
     // ---------------------------------------------------------------- water
 
     private static (FVector Location, double Cos, double Sin, FVector Scale) Placement(UObject root)
@@ -431,7 +465,7 @@ public static class GameGround
     /// The outlines of the sea leave gaps far out. The sea reaches wherever the ground lies below its level
     /// and the way there is under water too.
     /// </summary>
-    private static void FillSea(float[] surface, float[] ground, int width, int height, float seaLevel)
+    private static void FillSea(float[] surface, float[] ground, float[]? top, int width, int height, float seaLevel)
     {
         if (float.IsNaN(seaLevel))
             return;
@@ -444,7 +478,7 @@ public static class GameGround
             int x = i % width, y = i / width;
             foreach (int n in (ReadOnlySpan<int>)[x > 0 ? i - 1 : -1, x + 1 < width ? i + 1 : -1, y > 0 ? i - width : -1, y + 1 < height ? i + width : -1])
             {
-                if (n < 0 || !(ground[n] < seaLevel) || surface[n] >= seaLevel)
+                if (n < 0 || !(ground[n] < seaLevel) || surface[n] >= seaLevel || (top is not null && top[n] > seaLevel + CoveredBy))
                     continue;
                 surface[n] = seaLevel;
                 open.Enqueue(n);

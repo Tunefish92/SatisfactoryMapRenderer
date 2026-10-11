@@ -16,7 +16,8 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 
 ## What you get
 
-* **Two base maps**: the in-game map and a relief map with shaded terrain.
+* **Three base maps**: a ground map (the world from above without any factory, made from the game's ground
+  textures, water and heights), the in-game map, and a relief map with shaded terrain.
 * **3D view**: the whole world as a 3D landscape you can rotate and zoom, with your factory standing on it in
   the game's own shapes and textures: machines, foundations, walls, ramps, stations. Belts, pipes, rails and power lines run
   at their real heights, and players, landmarks and stations are labelled.
