@@ -24,7 +24,7 @@ public static class HtmlExporter
         using var stream = File.Create(Path.Combine(outputDirectory, "map-data.js"));
         stream.Write("window.MAP_DATA = "u8);
         using (var w = new Utf8JsonWriter(stream, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
-            WriteData(w, world, tiles, maxZoom, icons, logo, terrain);
+            WriteData(w, world, tiles, maxZoom, icons, logo, terrain, terrain ? game?.Ground : null);
         stream.Write(";\n"u8);
     }
 
@@ -112,6 +112,7 @@ public static class HtmlExporter
         Directory.CreateDirectory(directory);
         File.Copy(heights, Path.Combine(directory, "heights.png"), overwrite: true);
         File.Copy(game.TerrainInfoPath, Path.Combine(directory, "terrain.json"), overwrite: true);
+        CopyGround(game, Path.Combine(directory, GameGround.Directory));
 
         // The textures only change with the game data; cutting them again on every render would be wasted time.
         string stamp = Path.Combine(directory, ".source"), wanted = $"{new FileInfo(map).Length}|{File.GetLastWriteTimeUtc(map).Ticks}";
@@ -128,6 +129,26 @@ public static class HtmlExporter
         }
         File.WriteAllText(stamp, wanted);
         return true;
+    }
+
+    /// <summary>The game's ground textures and their map; only copied again when the game data changed.</summary>
+    private static void CopyGround(GameAssets game, string directory)
+    {
+        if (game.Ground is null)
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+            return;
+        }
+        string info = Path.Combine(game.GroundDirectory, GameGround.InfoFile), copy = Path.Combine(directory, GameGround.InfoFile);
+        string map = Path.Combine(game.GroundDirectory, GameGround.MapFile), mapCopy = Path.Combine(directory, GameGround.MapFile);
+        if (File.Exists(copy) && File.Exists(mapCopy) && File.ReadAllText(copy) == File.ReadAllText(info) && new FileInfo(mapCopy).Length == new FileInfo(map).Length)
+            return;
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, recursive: true);
+        Directory.CreateDirectory(directory);
+        foreach (string file in Directory.GetFiles(game.GroundDirectory))
+            File.Copy(file, Path.Combine(directory, Path.GetFileName(file)));
     }
 
     /// <summary>
@@ -363,7 +384,7 @@ public static class HtmlExporter
         return logo;
     }
 
-    private static void WriteData(Utf8JsonWriter w, MapWorld world, IReadOnlyDictionary<string, TileSet> tiles, int maxZoom, Dictionary<string, int> icons, string? logo, bool terrain)
+    private static void WriteData(Utf8JsonWriter w, MapWorld world, IReadOnlyDictionary<string, TileSet> tiles, int maxZoom, Dictionary<string, int> icons, string? logo, bool terrain, GroundInfo? ground)
     {
         int IconIndex(string? key) => key is not null && icons.TryGetValue(key, out int i) ? i : -1;
         var header = world.Save.Header;
@@ -375,6 +396,21 @@ public static class HtmlExporter
             w.WriteString("logo", logo);
         if (terrain)
             w.WriteBoolean("terrain", true);
+        if (ground is not null)
+        {
+            // The ground of the 3D view: terrain/ground/ground.png says which of these textures lies where.
+            w.WriteStartObject("ground");
+            w.WriteNumber("minX", ground.MinX);
+            w.WriteNumber("minY", ground.MinY);
+            w.WriteNumber("cell", ground.Cell);
+            w.WriteNumber("tile", ground.Tile);
+            w.WriteNumber("depthStep", ground.DepthStep);
+            w.WriteStartArray("layers");
+            foreach (string layer in ground.Layers)
+                w.WriteStringValue(layer);
+            w.WriteEndArray();
+            w.WriteEndObject();
+        }
         if (header.SaveName.Length > 0)
             w.WriteString("saveName", header.SaveName);
         if (header.SaveDateTimeUtc != default)

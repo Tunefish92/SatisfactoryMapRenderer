@@ -109,12 +109,59 @@
     precision highp float;
     in vec2 vUv;
     in vec3 vNormal, vWorld;
-    uniform sampler2D map, overlay;
+    precision highp sampler2DArray;
+    uniform sampler2D map, overlay, ground;
+    uniform sampler2DArray groundLayers;
     uniform float overlayOpacity;
     uniform vec3 eye, sun, haze;
+    uniform bool useGround;
+    uniform vec4 groundPlace; // where the ground map begins (x, z), its sample distance, the edge of one texture repetition
+    uniform float depthStep, cliffLayer;
     out vec4 color;
+
+    // The game's ground texture of one layer: fine close by, in larger repetitions further away, so that the
+    // pattern does not show as a grid from above.
+    vec3 layer(float index, float far) {
+      vec3 near = texture(groundLayers, vec3(vWorld.xz / groundPlace.w, index)).rgb;
+      vec3 wide = texture(groundLayers, vec3(vWorld.zx / (groundPlace.w * 7.3), index)).rgb;
+      return mix(near, wide, far);
+    }
+    // One sample of the ground map: colour, and in alpha the water depth in cm.
+    vec4 sampleGround(ivec2 at, vec3 fallback, float far) {
+      ivec2 size = textureSize(ground, 0);
+      // Beyond the game's landscape the in-game map shows; where that is sea, it counts as deep water.
+      vec4 beyond = vec4(fallback, fallback.b > fallback.r * 1.12 && fallback.g > fallback.r ? 3000.0 : 0.0);
+      if (at.x < 0 || at.y < 0 || at.x >= size.x || at.y >= size.y) return beyond;
+      vec3 t = texelFetch(ground, at, 0).rgb * 255.0;
+      float first = floor(t.r / 16.0 + 0.001), second = t.r - first * 16.0;
+      if (first > 14.5) return beyond;
+      vec3 c = layer(first, far);
+      if (second < 14.5 && t.g < 254.5) c = mix(layer(second, far), c, t.g / 255.0);
+      return vec4(c, t.b * depthStep);
+    }
+
     void main() {
       vec3 base = texture(map, vUv).rgb;
+      if (useGround) {
+        float far = smoothstep(2500.0, 30000.0, distance(vWorld, eye));
+        vec2 p = (vWorld.xz - groundPlace.xy) / groundPlace.z;
+        ivec2 i = ivec2(floor(p));
+        vec2 f = p - floor(p);
+        vec4 g = mix(mix(sampleGround(i, base, far), sampleGround(i + ivec2(1, 0), base, far), f.x),
+                     mix(sampleGround(i + ivec2(0, 1), base, far), sampleGround(i + ivec2(1, 1), base, far), f.x), f.y);
+        // The game's cliffs and rocks are objects standing on the landscape, which the heights include but
+        // the ground map does not: steep faces get the game's cliff texture, laid on from the side.
+        float up = normalize(vNormal).y, steep = cliffLayer < 0.0 ? 0.0 : smoothstep(0.80, 0.60, up);
+        if (steep > 0.0) {
+          vec3 rock = texture(groundLayers, vec3(vec2(vWorld.x + vWorld.z, vWorld.y) / (groundPlace.w * 2.0), cliffLayer)).rgb;
+          vec3 wide = texture(groundLayers, vec3(vec2(vWorld.x - vWorld.z, vWorld.y) / (groundPlace.w * 14.6), cliffLayer)).rgb;
+          g.rgb = mix(g.rgb, mix(rock, wide, far) * 1.3, steep);
+        }
+        // water: clear at the shore, the game's deep blue-green further out; water lies flat
+        float depth = g.a * smoothstep(0.75, 0.93, up);
+        vec3 water = mix(vec3(0.16, 0.40, 0.44), vec3(0.04, 0.17, 0.27), smoothstep(0.0, 1500.0, depth));
+        base = mix(g.rgb, water, depth > 0.0 ? clamp(0.30 + depth / 500.0, 0.0, 0.93) : 0.0);
+      }
       vec4 factory = texture(overlay, vUv);
       base = mix(base, factory.rgb, factory.a * overlayOpacity);
       vec3 n = normalize(vNormal);
@@ -458,6 +505,47 @@
   // With real boxes the footprints painted on the ground are not needed.
   if (factory.length) { $('opt-factory').checked = false; $('opt-factory-row').hidden = true; }
 
+  // The game's own ground: a map of which ground texture lies where (and how deep the water is), and one
+  // tiling texture per layer. Until both are loaded, and without them, the in-game map lies on the terrain.
+  const G = D.ground;
+  let groundReady = false;
+  if (G && G.layers && G.layers.length && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 4096) {
+    Promise.all([loadImage('terrain/ground/ground.png'), ...G.layers.map(f => loadImage(`terrain/ground/${f}`))]).then(([mapImage, ...images]) => {
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      // the numbers in this image are not colours: take them as they are
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, gl.RGB, gl.UNSIGNED_BYTE, mapImage);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
+      for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, name, value);
+
+      const size = images[0].width, sheet = document.createElement('canvas');
+      sheet.width = size; sheet.height = size * images.length;
+      const sc = sheet.getContext('2d');
+      images.forEach((img, i) => sc.drawImage(img, 0, i * size, size, size));
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, gl.createTexture());
+      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA, size, size, images.length, 0, gl.RGBA, gl.UNSIGNED_BYTE, sc.getImageData(0, 0, size, size * images.length).data);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+      const anisotropy = gl.getExtension('EXT_texture_filter_anisotropic');
+      if (anisotropy) gl.texParameterf(gl.TEXTURE_2D_ARRAY, anisotropy.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(anisotropy.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      gl.activeTexture(gl.TEXTURE0);
+      groundReady = true;
+      needsDraw = true;
+    }).catch(() => { $('opt-ground-row').hidden = true; });
+    try { $('opt-ground').checked = localStorage.getItem('smr:ground3d') !== 'false'; } catch { /* storage unavailable */ }
+    $('opt-ground').addEventListener('change', () => {
+      try { localStorage.setItem('smr:ground3d', $('opt-ground').checked); } catch { /* storage unavailable */ }
+      needsDraw = true;
+    });
+  } else {
+    $('opt-ground-row').hidden = true;
+  }
+
   let mapTexture;
   try { mapTexture = texture(0, await loadImage('terrain/map-4k.jpg')); }
   catch { return fail('The map texture of the 3D view is missing. Render the map again.'); }
@@ -573,6 +661,14 @@
     gl.uniform1i(u('map'), 0);
     gl.uniform1i(u('overlay'), 1);
     gl.uniform1f(u('overlayOpacity'), $('opt-factory').checked ? 1 : 0);
+    gl.uniform1i(u('ground'), 4);
+    gl.uniform1i(u('groundLayers'), 5);
+    gl.uniform1i(u('useGround'), groundReady && $('opt-ground').checked ? 1 : 0);
+    if (G) {
+      gl.uniform4f(u('groundPlace'), G.minX - centreX, G.minY - centreY, G.cell, G.tile);
+      gl.uniform1f(u('depthStep'), G.depthStep);
+      gl.uniform1f(u('cliffLayer'), G.layers.indexOf('cliff.jpg'));
+    }
     gl.uniform3fv(u('eye'), eye);
     gl.uniform3fv(u('sun'), norm([-0.55, 0.62, -0.55])); // from the north-west, as on the relief map
     gl.uniform3fv(u('haze'), sky);

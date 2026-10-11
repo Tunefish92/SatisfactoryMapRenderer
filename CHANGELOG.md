@@ -5,6 +5,9 @@
 * 3D view: the world as a landscape built from the game's height data, with the in-game map on it and the
   factory in the game's own 3D models and textures (548 building types), belts, pipes and rails at their real
   heights, and labels for players, landmarks and stations. Opened with the 3D button on the map.
+* 3D view, realistic ground: the terrain carries the game's own ground textures (sand, grass, forest, gravel,
+  cliff, …), placed with the game's landscape data, and the sea, lakes and rivers from the game's water
+  surfaces. "Realistic ground" in the 3D view switches back to the in-game map.
 * Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is
   made during the game data export and chosen in the *Map* dropdown.
 * Nicer admin login and logout: a login card with show/hide for the password and a signed-in bar with a

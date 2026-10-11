@@ -80,6 +80,10 @@ public sealed class GameAssets : IDisposable
     public string ModelDataPath => Path.Combine(CacheDirectory, ModelLibrary.DataFile);
     public string ModelTextureDirectory => Path.Combine(CacheDirectory, ModelLibrary.TextureDirectory);
     private ModelLibrary? _models;
+    /// <summary>The game's ground textures and where they lie, for the 3D view; null without game data that has them.</summary>
+    public GroundInfo? Ground => _ground ??= GameGround.TryLoad(CacheDirectory);
+    public string GroundDirectory => Path.Combine(CacheDirectory, GameGround.Directory);
+    private GroundInfo? _ground;
     private const string TerrainInfoFileName = "terrain.json";
     private const string HeightData = "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test.HeightData_Test";
     public string? MapImagePath => Data.MapImage is { } name && File.Exists(Path.Combine(CacheDirectory, name)) ? Path.Combine(CacheDirectory, name) : null;
@@ -108,6 +112,7 @@ public sealed class GameAssets : IDisposable
             File.WriteAllBytes(Path.Combine(assets.CacheDirectory, LogoFileName), logo);
         assets.CreateRelief();
         assets.CreateModels();
+        assets.CreateGround();
         assets.Data.Save(dataFile);
         return assets;
     }
@@ -159,6 +164,17 @@ public sealed class GameAssets : IDisposable
             foreach (string file in Directory.GetFiles(ModelTextureDirectory))
                 File.Copy(file, Path.Combine(textures, Path.GetFileName(file)));
         }
+        if (Ground is null && _game is not null)
+            CreateGround();
+        if (Ground is not null)
+        {
+            string ground = Path.Combine(directory, GameGround.Directory);
+            if (Directory.Exists(ground))
+                Directory.Delete(ground, recursive: true);
+            Directory.CreateDirectory(ground);
+            foreach (string file in Directory.GetFiles(GroundDirectory))
+                File.Copy(file, Path.Combine(ground, Path.GetFileName(file)));
+        }
         if (TerrainHeightsPath is { } heights)
         {
             File.Copy(heights, Path.Combine(directory, HeightsFileName), overwrite: true);
@@ -202,6 +218,19 @@ public sealed class GameAssets : IDisposable
         ExtractMapIcons(archive);
         _log($"  Icons: {Directory.GetFiles(IconDirectory, "*.png").Length} ({sw.Elapsed.TotalSeconds:0.0}s)");
         return data;
+    }
+
+    private void CreateGround()
+    {
+        try
+        {
+            _ground = GameGround.Extract(Archive, CacheDirectory, _log);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The ground textures are an extra; without them the 3D view shows the in-game map on the terrain.
+            _log($"  Ground: not read ({ex.Message})");
+        }
     }
 
     private void CreateModels()

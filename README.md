@@ -175,8 +175,11 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
 in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
-The **3D** button under the zoom buttons opens the 3D view: the game's height data as a landscape with the map
-on it, and the factory in the game's own 3D models, placed with the positions and rotations from the save. The
+The **3D** button under the zoom buttons opens the 3D view: the game's height data as a landscape, and
+the factory in the game's own 3D models, placed with the positions and rotations from the save. The
+ground shows the game's own ground textures where the game's landscape has them painted, with the sea, lakes
+and rivers as water; untick **Realistic ground** to see the in-game map on the terrain instead. Steep faces get
+the game's cliff texture, because the game's rocks are separate objects that the ground data does not cover. The
 models carry the game's textures, the machines in the standard FICSIT orange (custom paint from the save is not shown). Belts, pipes, rails and
 wires are simple strips at their real heights, and the few building types without a model are boxes. Drag to
 rotate, right-drag or Shift+drag to move, wheel to zoom; each factory layer can be switched off. Heights are
