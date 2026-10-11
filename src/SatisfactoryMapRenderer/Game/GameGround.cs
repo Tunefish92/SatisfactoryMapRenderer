@@ -86,7 +86,12 @@ public static class GameGround
         }
     }
 
-    public static GroundInfo? Extract(GameArchive archive, string gameDataDirectory, Action<string> log)
+    /// <param name="heights">
+    /// The height image of the 3D view and its description, with the world's extent: the landscape's exact
+    /// heights are used to say what the image's values mean in the world. Null to leave them as they are.
+    /// </param>
+    public static GroundInfo? Extract(GameArchive archive, string gameDataDirectory, Action<string> log,
+        (string Image, string Info, double MinX, double MinY, double Size)? heights = null)
     {
         var tiles = new ConcurrentBag<Tile>();
         var water = new ConcurrentBag<Triangle>();
@@ -202,6 +207,8 @@ public static class GameGround
             }
         });
         FillSea(surface, ground, width, height, water.Where(t => t.Sea).Select(t => t.A.Z).DefaultIfEmpty(float.NaN).Order().ElementAt(water.Count(t => t.Sea) / 2));
+        if (heights is { } h)
+            Calibrate(ground, surface, width, height, worldX, worldY, cell, h, log);
         for (int i = 0; i < ground.Length; i++)
         {
             if (float.IsNaN(ground[i]) || surface[i] <= ground[i])
@@ -301,6 +308,55 @@ public static class GameGround
             tile.Share[i] = (byte)(second == None ? 255 : 255 * firstWeight / (firstWeight + secondWeight));
         }
         return tile;
+    }
+
+    /// <summary>
+    /// The height image holds values from 0 to 1. The landscape's heights are exact, so comparing both where
+    /// the ground is dry gives the straight line between value and world height. Rocks standing on the
+    /// landscape are in the image but not in the landscape; such samples are dropped pass by pass.
+    /// </summary>
+    private static void Calibrate(float[] ground, float[] surface, int width, int height, double worldX, double worldY, double cell,
+        (string Image, string Info, double MinX, double MinY, double Size) heights, Action<string> log)
+    {
+        using var image = SKBitmap.Decode(heights.Image);
+        if (image is null || image.Width != image.Height)
+            return;
+        int size = image.Width;
+        var samples = new List<(double H, double Z)>();
+        for (int v = 0; v < height; v += 6)
+        {
+            for (int u = 0; u < width; u += 6)
+            {
+                int i = v * width + u;
+                if (float.IsNaN(ground[i]) || surface[i] > ground[i] - 50)
+                    continue;
+                int px = (int)Math.Round((worldX + u * cell - heights.MinX) / heights.Size * (size - 1)), py = (int)Math.Round((worldY + v * cell - heights.MinY) / heights.Size * (size - 1));
+                if (px < 0 || py < 0 || px >= size || py >= size)
+                    continue;
+                var c = image.GetPixel(px, py);
+                samples.Add(((c.Red * 256 + c.Green) / 65535.0, ground[i]));
+            }
+        }
+
+        double a = 0, b = 0, deviation = 0;
+        var used = samples;
+        for (int pass = 0; pass < 10 && used.Count >= 1000; pass++)
+        {
+            double meanH = used.Average(s => s.H), meanZ = used.Average(s => s.Z);
+            double variance = used.Sum(s => (s.H - meanH) * (s.H - meanH));
+            if (variance < 1e-9)
+                return;
+            a = used.Sum(s => (s.H - meanH) * (s.Z - meanZ)) / variance;
+            b = meanZ - a * meanH;
+            double slope = a, offset = b;
+            deviation = Math.Sqrt(used.Average(s => Math.Pow(s.Z - (slope * s.H + offset), 2)));
+            double limit = Math.Max(1.5 * deviation, 150);
+            used = used.Where(s => Math.Abs(s.Z - (slope * s.H + offset)) <= limit).ToList();
+        }
+        if (a <= 0 || used.Count < 1000)
+            return;
+        File.WriteAllText(heights.Info, JsonSerializer.Serialize(new { size, zAt0 = Math.Round(b), zAt1 = Math.Round(a + b) }));
+        log($"  Terrain heights: set to the landscape, {b / 100:0} m to {(a + b) / 100:0} m (from {used.Count:N0} of {samples.Count:N0} samples, ±{deviation / 100:0.0} m)");
     }
 
     // ---------------------------------------------------------------- water

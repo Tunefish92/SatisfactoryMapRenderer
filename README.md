@@ -182,7 +182,7 @@ and rivers as water; untick **Realistic ground** to see the in-game map on the t
 the game's cliff texture, because the game's rocks are separate objects that the ground data does not cover. The
 models carry the game's textures, the machines in the standard FICSIT orange (custom paint from the save is not shown). Belts, pipes, rails and
 wires are simple strips at their real heights, and the few building types without a model are boxes. Drag to
-rotate, right-drag or Shift+drag to move, wheel to zoom; each factory layer can be switched off. Heights are
+rotate, drag with the wheel button or Shift+drag to move, wheel to zoom towards the mouse; each factory layer can be switched off. Heights are
 the real ones, not exaggerated. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
 
 The *Map* dropdown on the Layers tab switches between the **game map** and a **relief map**: the same map with the

@@ -8,6 +8,8 @@
 * 3D view, realistic ground: the terrain carries the game's own ground textures (sand, grass, forest, gravel,
   cliff, …), placed with the game's landscape data, and the sea, lakes and rivers from the game's water
   surfaces. "Realistic ground" in the 3D view switches back to the in-game map.
+* 3D view: terrain heights calibrated with the game's landscape (they were up to 5 m too low on high ground);
+  the wheel zooms towards the mouse, the wheel button moves the view, the right button turns it.
 * Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is
   made during the game data export and chosen in the *Map* dropdown.
 * Nicer admin login and logout: a login card with show/hide for the password and a signed-in bar with a

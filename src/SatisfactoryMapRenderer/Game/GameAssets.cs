@@ -224,7 +224,8 @@ public sealed class GameAssets : IDisposable
     {
         try
         {
-            _ground = GameGround.Extract(Archive, CacheDirectory, _log);
+            _ground = GameGround.Extract(Archive, CacheDirectory, _log, TerrainHeightsPath is { } heights
+                ? (heights, TerrainInfoPath, World.WorldBounds.MinX, World.WorldBounds.MinY, World.WorldBounds.Size) : null);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

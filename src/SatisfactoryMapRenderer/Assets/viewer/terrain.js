@@ -750,7 +750,11 @@
   const pointers = new Map();
   let pinch = 0;
   canvas.addEventListener('contextmenu', e => e.preventDefault());
-  canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }); });
+  // Left or right button turns the view; the wheel button (or Shift with any button) moves it.
+  canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, pan: e.button === 1 || e.shiftKey }); });
+  // no scroll cursor of the browser while the wheel button is held
+  canvas.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });
+  canvas.addEventListener('auxclick', e => e.preventDefault());
   canvas.addEventListener('pointerup', e => { pointers.delete(e.pointerId); pinch = 0; });
   canvas.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); pinch = 0; });
   canvas.addEventListener('pointermove', e => {
@@ -772,7 +776,37 @@
     }
     clampView();
   });
-  canvas.addEventListener('wheel', e => { e.preventDefault(); view.distance *= Math.exp(e.deltaY * 0.0012); clampView(); }, { passive: false });
+  /** The point of the terrain under a position of the canvas (view coordinates), or null where there is only sky. */
+  function terrainUnder(clientX, clientY) {
+    updateCamera();
+    const box = canvas.getBoundingClientRect(), half = Math.tan(0.4);
+    const nx = ((clientX - box.left) / box.width * 2 - 1) * half * box.width / box.height, ny = (1 - (clientY - box.top) / box.height * 2) * half;
+    const ty = groundAt(view.target[0] + centreX, view.target[2] + centreY);
+    const f = norm(sub([view.target[0], ty, view.target[2]], eye)), s = norm(cross(f, [0, 1, 0])), u = cross(s, f);
+    const d = norm([f[0] + s[0] * nx + u[0] * ny, f[1] + s[1] * nx + u[1] * ny, f[2] + s[2] * nx + u[2] * ny]);
+    const above = t => eye[1] + d[1] * t - groundAt(eye[0] + d[0] * t + centreX, eye[2] + d[2] * t + centreY);
+    // walk along the line of sight until it is below the ground, then narrow the step down
+    const reach = view.distance * 6 + W.size, step = Math.max(view.distance / 150, 200);
+    for (let t = step; t < reach; t += step) {
+      if (above(t) > 0) continue;
+      let lo = t - step, hi = t;
+      for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (above(mid) > 0) lo = mid; else hi = mid; }
+      return [eye[0] + d[0] * hi, eye[2] + d[2] * hi];
+    }
+    return null;
+  }
+  // The wheel zooms towards what is under the mouse: that point stays where it is on the screen.
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const before = view.distance, under = terrainUnder(e.clientX, e.clientY);
+    view.distance = Math.min(Math.max(before * Math.exp(e.deltaY * 0.0012), 3000), W.size * 1.6);
+    if (under) {
+      const k = view.distance / before;
+      view.target[0] = under[0] + (view.target[0] - under[0]) * k;
+      view.target[2] = under[1] + (view.target[2] - under[1]) * k;
+    }
+    clampView();
+  }, { passive: false });
   window.addEventListener('resize', () => { needsDraw = true; });
   window.addEventListener('keydown', e => {
     const step = 40;
