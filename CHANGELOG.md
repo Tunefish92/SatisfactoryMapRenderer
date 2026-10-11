@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+* Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is
+  made during the game data export and chosen in the *Map* dropdown.
+* Nicer admin login and logout: a login card with show/hide for the password and a signed-in bar with a
+  Log out button.
+
 ## 0.1.0 – 2026-10-10
 
 First public version.

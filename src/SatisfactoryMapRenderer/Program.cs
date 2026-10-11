@@ -20,8 +20,9 @@ internal static class Program
           -z, --max-zoom <3-9>      Highest rendered zoom level (default: 9, about 6 cm per pixel)
           -b, --background <image>  Use this image as the map instead of the game's own map
               --realistic <image>   A second, selectable base map (same area as --background), e.g. a realistic render
-              --maps <dir>          Folder with game-map.jpg and realistic-map.jpg, used when the two options above
-                                    are not given (default: maps in the current directory)
+              --maps <dir>          Folder with game-map.jpg, relief-map.jpg and realistic-map.jpg. They replace the
+                                    game's own map and relief map and add a realistic one, unless the options
+                                    above are given (default: maps in the current directory)
               --dump-json [file]    Also write every decoded object with all properties as JSON
           -h, --help                Show this help
 
@@ -55,6 +56,7 @@ internal static class Program
         public int MaxZoom { get; set; } = 9;
         public string? Background { get; set; }
         public string? Realistic { get; set; }
+        public string? Relief { get; set; }
         public string MapsDirectory { get; set; } = "maps";
         public bool DumpJson { get; set; }
         public string? DumpJsonPath { get; set; }
@@ -204,6 +206,7 @@ internal static class Program
         // Map images kept in the maps folder take the place of the game's own map and of --realistic.
         o.Background ??= ExistingFile(Path.Combine(o.MapsDirectory, GameMapFile));
         o.Realistic ??= ExistingFile(Path.Combine(o.MapsDirectory, RealisticMapFile));
+        o.Relief = ExistingFile(Path.Combine(o.MapsDirectory, ReliefMapFile));
 
         if (savePath is null)
         {
@@ -220,6 +223,7 @@ internal static class Program
     private const string ExportOnly = "<export>";
     private const string GameMapFile = "game-map.jpg";
     private const string RealisticMapFile = "realistic-map.jpg";
+    private const string ReliefMapFile = "relief-map.jpg";
 
     private static string? ExistingFile(string path) => File.Exists(path) ? Path.GetFullPath(path) : null;
 
@@ -318,13 +322,15 @@ internal static class Program
 
         if (o.Background is not null)
             Console.WriteLine($"Game map from {o.Background}");
+        if (o.Relief is not null)
+            Console.WriteLine($"Relief map from {o.Relief}");
         if (o.Realistic is not null)
             Console.WriteLine($"Realistic map from {o.Realistic}");
         Console.WriteLine($"Rendering to {o.Output}");
         // The exporter reports each finished tile layer ("  Buildings: ... tiles"); those lines drive the bar.
         int layersDone = 0, layersTotal = Layers.All.Count(l => l.Kind == LayerKind.Raster);
         progress?.Invoke("Drawing the map", 25);
-        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Realistic), message =>
+        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Realistic, o.Relief), message =>
         {
             Console.WriteLine(message);
             if (message.StartsWith("  ", StringComparison.Ordinal) && message.Contains(':'))

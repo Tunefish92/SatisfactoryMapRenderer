@@ -65,6 +65,11 @@ public sealed class GameAssets : IDisposable
     /// <summary>The game's own icon, shown as the viewer's logo; null if the installation had none.</summary>
     public string? LogoPath => File.Exists(Path.Combine(CacheDirectory, LogoFileName)) ? Path.Combine(CacheDirectory, LogoFileName) : null;
     private const string LogoFileName = "logo.png";
+
+    /// <summary>The in-game map with the terrain shaded from the game's height data; null if it could not be made.</summary>
+    public string? ReliefImagePath => File.Exists(Path.Combine(CacheDirectory, ReliefFileName)) ? Path.Combine(CacheDirectory, ReliefFileName) : null;
+    private const string ReliefFileName = "relief.jpg";
+    private const string HeightData = "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test.HeightData_Test";
     public string? MapImagePath => Data.MapImage is { } name && File.Exists(Path.Combine(CacheDirectory, name)) ? Path.Combine(CacheDirectory, name) : null;
 
     /// <param name="cacheRoot">Root folder for all cached game data (per game version sub folders).</param>
@@ -89,6 +94,7 @@ public sealed class GameAssets : IDisposable
         assets.Data = assets.Extract(versionKey);
         if (game.TryReadIcon() is { } logo)
             File.WriteAllBytes(Path.Combine(assets.CacheDirectory, LogoFileName), logo);
+        assets.CreateRelief();
         assets.Data.Save(dataFile);
         return assets;
     }
@@ -122,6 +128,11 @@ public sealed class GameAssets : IDisposable
             File.Copy(map, Path.Combine(directory, Path.GetFileName(map)), overwrite: true);
         if (_game?.TryReadIcon() is { } logo)
             File.WriteAllBytes(Path.Combine(directory, LogoFileName), logo);
+        // Game data extracted by an older version of this tool has no relief map yet.
+        if (ReliefImagePath is null && _game is not null)
+            CreateRelief();
+        if (ReliefImagePath is { } relief)
+            File.Copy(relief, Path.Combine(directory, ReliefFileName), overwrite: true);
         File.Copy(DataFile, Path.Combine(directory, DataFileName), overwrite: true);
         _log($"  Exported {Directory.GetFiles(icons, "*.png").Length:N0} icons and {Data.Actors.Count:N0} level actors to {Path.GetFullPath(directory)}");
     }
@@ -160,6 +171,65 @@ public sealed class GameAssets : IDisposable
         ExtractMapIcons(archive);
         _log($"  Icons: {Directory.GetFiles(IconDirectory, "*.png").Length} ({sw.Elapsed.TotalSeconds:0.0}s)");
         return data;
+    }
+
+    /// <summary>
+    /// Relief map: the in-game map with hill shading. The game ships a height map of the whole world (terrain,
+    /// cliffs, rocks and large trees) that covers the same area as its map; light from the north-west turns it
+    /// into shading, which is laid over the map's colours.
+    /// </summary>
+    private void CreateRelief()
+    {
+        try
+        {
+            if (MapImagePath is not { } mapPath || Archive.TryLoadFloatTexture(HeightData) is not var (heights, size))
+                return;
+
+            // Shading per height sample: Sobel gradient (which also smooths the 16-bit steps), lit from the north-west.
+            const float exaggeration = 800f;
+            double azimuth = 315 * Math.PI / 180, altitude = 50 * Math.PI / 180;
+            float flat = (float)Math.Sin(altitude);
+            using var shade = new SKBitmap(size, size, SKColorType.Gray8, SKAlphaType.Opaque);
+            byte[] gray = new byte[size * size];
+            Parallel.For(0, size, y =>
+            {
+                int y0 = Math.Max(y - 1, 0), y1 = Math.Min(y + 1, size - 1);
+                for (int x = 0; x < size; x++)
+                {
+                    int x0 = Math.Max(x - 1, 0), x1 = Math.Min(x + 1, size - 1);
+                    float H(int px, int py) => heights[py * size + px];
+                    float gx = (H(x1, y0) + 2 * H(x1, y) + H(x1, y1) - H(x0, y0) - 2 * H(x0, y) - H(x0, y1)) / 8 * exaggeration;
+                    float gy = (H(x0, y1) + 2 * H(x, y1) + H(x1, y1) - H(x0, y0) - 2 * H(x, y0) - H(x1, y0)) / 8 * exaggeration;
+                    double slope = Math.PI / 2 - Math.Atan(Math.Sqrt(gx * gx + gy * gy));
+                    double aspect = Math.Atan2(-gx, gy);
+                    double lit = Math.Clamp(Math.Sin(altitude) * Math.Sin(slope) + Math.Cos(altitude) * Math.Cos(slope) * Math.Cos(azimuth - aspect), 0, 1);
+                    // Hard-light blending: 50 % grey leaves the map as it is, darker shades it, lighter brightens it.
+                    double value = lit < flat ? 0.5 - (flat - lit) * 0.46 : 0.5 + (lit - flat) * 0.9;
+                    gray[y * size + x] = (byte)Math.Clamp(Math.Round(value * 255), 0, 255);
+                }
+            });
+            gray.CopyTo(shade.GetPixelSpan());
+
+            using var map = SKBitmap.Decode(mapPath);
+            if (map is null)
+                return;
+            using var relief = new SKBitmap(map.Width, map.Height, SKColorType.Rgba8888, SKAlphaType.Opaque);
+            using (var canvas = new SKCanvas(relief))
+            using (var shadeImage = SKImage.FromBitmap(shade))
+            using (var paint = new SKPaint { BlendMode = SKBlendMode.HardLight })
+            {
+                canvas.DrawBitmap(map, 0, 0);
+                canvas.DrawImage(shadeImage, new SKRect(0, 0, map.Width, map.Height), new SKSamplingOptions(SKCubicResampler.Mitchell), paint);
+            }
+            using var stream = File.Create(Path.Combine(CacheDirectory, ReliefFileName));
+            relief.Encode(stream, SKEncodedImageFormat.Jpeg, 90);
+            _log($"  Relief map: {relief.Width} px from {size} px height data");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The relief map is an extra; the in-game map alone is enough.
+            _log($"  Relief map: not created ({ex.Message})");
+        }
     }
 
     /// <summary>The in-game map is split into 2×2 textures; slice Map_A-B is column A, row B.</summary>

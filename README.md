@@ -16,6 +16,7 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 
 ## What you get
 
+* **Two base maps**: the in-game map and a relief map with shaded terrain.
 * **The whole factory**: foundations and walls, buildings (with their game icons when zoomed in), conveyor belts by
   tier, pipes and hypertubes, railways and the power grid.
 * **Everything else on the map**: players with their names, vehicles and trains, creatures and their spawners,
@@ -171,15 +172,19 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
 in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
+The *Map* dropdown on the Layers tab switches between the **game map** and a **relief map**: the same map with the
+terrain shaded from the game's own height data, so mountains, cliffs, canyons and craters stand out.
+
 When the game gets an update that the image does not know yet, new items and buildings appear without icons
 until the image is updated. To use your own game's data in the meantime, mount your Satisfactory installation
 read-only at `/game` (the folder that contains `FactoryGame` and `CommunityResources`) and delete
 `map-data/gamedata/` if it exists: on the next start the data is exported into `map-data/gamedata/`, which from
 then on is used instead of the bundled data. The mount can be removed again afterwards.
 
-Two optional images in `map-data/maps/` replace or add base maps, both covering the whole in-game map area:
-`game-map.jpg` (used instead of the bundled in-game map) and `realistic-map.jpg` (offered as a second base map in
-the *Map* dropdown).
+Optional images in `map-data/maps/` replace or add base maps, each covering the whole in-game map area:
+`game-map.jpg` (used instead of the bundled in-game map), `relief-map.jpg` (used instead of the bundled relief map,
+for example a higher-resolution one) and `realistic-map.jpg` (offered as a further base map in the *Map*
+dropdown).
 
 ## Settings
 

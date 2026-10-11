@@ -7,7 +7,7 @@ using SkiaSharp;
 namespace SatisfactoryMapRenderer.Rendering;
 
 /// <param name="BackgroundImage">Explicit map image; otherwise the game's own map is used when available.</param>
-public sealed record ExportOptions(string OutputDirectory, int MaxZoom, string? BackgroundImage, GameAssets? Game = null, string? RealisticImage = null);
+public sealed record ExportOptions(string OutputDirectory, int MaxZoom, string? BackgroundImage, GameAssets? Game = null, string? RealisticImage = null, string? ReliefImage = null);
 
 /// <summary>Renders all tile layers and writes the HTML viewer.</summary>
 public static class MapExporter
@@ -24,14 +24,15 @@ public static class MapExporter
         string tilesDir = Path.Combine(options.OutputDirectory, "tiles");
         if (Directory.Exists(tilesDir))
             foreach (string dir in Directory.GetDirectories(tilesDir))
-                if (Path.GetFileName(dir) != Layers.Background.Id && Path.GetFileName(dir) != Layers.Realistic.Id)
+                if (!BaseMaps.Any(l => l.Id == Path.GetFileName(dir)))
                     Directory.Delete(dir, recursive: true);
 
         var renderer = new TileRenderer(options.OutputDirectory, options.MaxZoom, log);
         var tiles = new Dictionary<string, TileSet>();
 
         string? backgroundPath = options.BackgroundImage ?? options.Game?.MapImagePath;
-        foreach (var (layer, image) in new[] { (Layers.Background, backgroundPath), (Layers.Realistic, options.RealisticImage) })
+        string? reliefPath = options.ReliefImage ?? options.Game?.ReliefImagePath;
+        foreach (var (layer, image) in new[] { (Layers.Background, backgroundPath), (Layers.Relief, reliefPath), (Layers.Realistic, options.RealisticImage) })
         {
             string layerDir = Path.Combine(tilesDir, layer.Id);
             if (image is null)
@@ -57,7 +58,7 @@ public static class MapExporter
             ? key => iconImages.GetOrAdd(key, k => File.Exists(game.IconPath(k)) ? SKImage.FromEncodedData(game.IconPath(k))?.ToRasterImage(true) : null)
             : null;
 
-        foreach (var layer in Layers.All.Where(l => l.Kind == LayerKind.Raster && l != Layers.Background && l != Layers.Realistic && l != Layers.Explored && l != Layers.FogOfWar))
+        foreach (var layer in Layers.All.Where(l => l.Kind == LayerKind.Raster && !BaseMaps.Contains(l) && l != Layers.Explored && l != Layers.FogOfWar))
         {
             var features = world.In(layer).ToList();
             if (features.Count > 0)
@@ -69,6 +70,9 @@ public static class MapExporter
             image?.Dispose();
         log($"Rendered {tiles.Values.Sum(t => t.Tiles.Count):N0} tiles in {sw.Elapsed.TotalSeconds:0.0}s");
     }
+
+    /// <summary>Base maps cut from an image; they do not depend on the save and are kept between renders.</summary>
+    private static readonly LayerDef[] BaseMaps = [Layers.Background, Layers.Relief, Layers.Realistic];
 
     private const string SourceStamp = ".source";
 

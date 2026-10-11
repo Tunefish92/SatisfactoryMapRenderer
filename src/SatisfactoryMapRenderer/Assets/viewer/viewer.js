@@ -334,9 +334,9 @@
     if (!map.hasLayer(handles[id]?.leaflet)) setLayer(id, true);
   }
 
-  // Base maps share one dropdown: the game map (or the explored outline without a game installation)
-  // and, when rendered with --realistic <image>, a realistic map.
-  const BASE_MAPS = ['background', 'realistic', 'explored'];
+  // Base maps share one dropdown: the game map (or the explored outline without game data), the same
+  // map with shaded relief, and, when rendered with --realistic <image>, a realistic map.
+  const BASE_MAPS = ['background', 'relief', 'realistic', 'explored'];
   const baseMaps = BASE_MAPS.filter(id => handles[id]).map(id => ({
     id, title: D.layers.find(l => l.id === id).title, leaflet: handles[id].leaflet,
   }));

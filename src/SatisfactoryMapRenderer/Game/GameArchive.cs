@@ -131,6 +131,26 @@ public sealed class GameArchive : IDisposable
         }
     }
 
+    /// <summary>A square single-channel 16-bit float texture (PF_R16F) as floats, e.g. the world's height data.</summary>
+    public (float[] Values, int Size)? TryLoadFloatTexture(string objectPath)
+    {
+        try
+        {
+            if (TryLoadObject(objectPath) is not UTexture { Format: EPixelFormat.PF_R16F } texture
+                || texture.GetFirstMip() is not { BulkData.Data: { } data } mip || mip.SizeX != mip.SizeY || data.Length < mip.SizeX * mip.SizeY * 2)
+                return null;
+            float[] values = new float[mip.SizeX * mip.SizeY];
+            var halves = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, Half>(data);
+            for (int i = 0; i < values.Length; i++)
+                values[i] = (float)halves[i];
+            return (values, mip.SizeX);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
     public static SKBitmap? Decode(UTexture texture, int maxSize)
     {
         var mip = maxSize > 0 ? texture.GetMipByMaxSize(maxSize) ?? texture.GetFirstMip() : texture.GetFirstMip();
