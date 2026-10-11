@@ -17,6 +17,8 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 ## What you get
 
 * **Two base maps**: the in-game map and a relief map with shaded terrain.
+* **3D view**: the whole world as a 3D landscape you can rotate and zoom, with the map and your factory draped
+  over it and labels for players, landmarks and stations.
 * **The whole factory**: foundations and walls, buildings (with their game icons when zoomed in), conveyor belts by
   tier, pipes and hypertubes, railways and the power grid.
 * **Everything else on the map**: players with their names, vehicles and trains, creatures and their spawners,
@@ -171,6 +173,10 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 
 The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
 in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
+
+The **3D** button under the zoom buttons opens the 3D view: the game's height data as a landscape, with the map
+and the factory layers on it. Drag to rotate, right-drag or Shift+drag to move, wheel to zoom; a slider
+exaggerates the heights. It needs a browser with WebGL 2.
 
 The *Map* dropdown on the Layers tab switches between the **game map** and a **relief map**: the same map with the
 terrain shaded from the game's own height data, so mountains, cliffs, canyons and craters stand out.

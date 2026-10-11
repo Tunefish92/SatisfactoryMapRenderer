@@ -17,11 +17,12 @@ public static class HtmlExporter
         CopyAssets(outputDirectory);
         var icons = CopyIcons(world, outputDirectory, game);
         string? logo = CopyLogo(outputDirectory, game);
+        bool terrain = CopyTerrain(outputDirectory, game);
 
         using var stream = File.Create(Path.Combine(outputDirectory, "map-data.js"));
         stream.Write("window.MAP_DATA = "u8);
         using (var w = new Utf8JsonWriter(stream, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
-            WriteData(w, world, tiles, maxZoom, icons, logo);
+            WriteData(w, world, tiles, maxZoom, icons, logo, terrain);
         stream.Write(";\n"u8);
     }
 
@@ -92,6 +93,41 @@ public static class HtmlExporter
         stream.Write(";\n"u8);
     }
 
+    /// <summary>
+    /// Files of the 3D view (terrain.html): the world's heights and the in-game map as its texture, in two
+    /// sizes so that weaker graphics hardware is not asked for the large one. Returns false without them.
+    /// </summary>
+    private static bool CopyTerrain(string outputDirectory, GameAssets? game)
+    {
+        string directory = Path.Combine(outputDirectory, "terrain");
+        if (game?.TerrainHeightsPath is not { } heights || game.MapImagePath is not { } map)
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+            return false;
+        }
+
+        Directory.CreateDirectory(directory);
+        File.Copy(heights, Path.Combine(directory, "heights.png"), overwrite: true);
+        File.Copy(game.TerrainInfoPath, Path.Combine(directory, "terrain.json"), overwrite: true);
+
+        // The textures only change with the game data; cutting them again on every render would be wasted time.
+        string stamp = Path.Combine(directory, ".source"), wanted = $"{new FileInfo(map).Length}|{File.GetLastWriteTimeUtc(map).Ticks}";
+        if (File.Exists(stamp) && File.ReadAllText(stamp) == wanted && File.Exists(Path.Combine(directory, "map-8k.jpg")) && File.Exists(Path.Combine(directory, "map-4k.jpg")))
+            return true;
+        using var image = SKBitmap.Decode(map);
+        if (image is null)
+            return false;
+        foreach (var (name, size) in new[] { ("map-8k.jpg", 8192), ("map-4k.jpg", 4096) })
+        {
+            using var scaled = image.Width == size ? null : image.Resize(new SKImageInfo(size, size), new SKSamplingOptions(SKCubicResampler.Mitchell));
+            using var stream = File.Create(Path.Combine(directory, name));
+            (scaled ?? image).Encode(stream, SKEncodedImageFormat.Jpeg, 88);
+        }
+        File.WriteAllText(stamp, wanted);
+        return true;
+    }
+
     private const string GameLogoFile = "game-logo.png";
 
     /// <summary>The game's icon replaces the viewer's own logo when the game data has one.</summary>
@@ -151,7 +187,7 @@ public static class HtmlExporter
         return logo;
     }
 
-    private static void WriteData(Utf8JsonWriter w, MapWorld world, IReadOnlyDictionary<string, TileSet> tiles, int maxZoom, Dictionary<string, int> icons, string? logo)
+    private static void WriteData(Utf8JsonWriter w, MapWorld world, IReadOnlyDictionary<string, TileSet> tiles, int maxZoom, Dictionary<string, int> icons, string? logo, bool terrain)
     {
         int IconIndex(string? key) => key is not null && icons.TryGetValue(key, out int i) ? i : -1;
         var header = world.Save.Header;
@@ -161,6 +197,8 @@ public static class HtmlExporter
         w.WriteNumber("maxZoom", maxZoom);
         if (logo is not null)
             w.WriteString("logo", logo);
+        if (terrain)
+            w.WriteBoolean("terrain", true);
         if (header.SaveName.Length > 0)
             w.WriteString("saveName", header.SaveName);
         if (header.SaveDateTimeUtc != default)

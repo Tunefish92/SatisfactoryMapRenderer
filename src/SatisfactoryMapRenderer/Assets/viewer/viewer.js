@@ -55,6 +55,23 @@
   map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
   map.attributionControl.addAttribution(`Rendered from <b>${esc(D.fileName)}</b>`);
 
+  // The 3D view of the same world, when the game data has the heights for it.
+  if (D.terrain) {
+    const Button3D = L.Control.extend({
+      onAdd() {
+        const bar = L.DomUtil.create('div', 'leaflet-bar');
+        const link = L.DomUtil.create('a', 'view-3d', bar);
+        link.href = 'terrain.html';
+        link.title = 'Open the 3D view';
+        link.setAttribute('aria-label', 'Open the 3D view');
+        link.textContent = '3D';
+        L.DomEvent.disableClickPropagation(bar);
+        return bar;
+      },
+    });
+    new Button3D({ position: 'topleft' }).addTo(map);
+  }
+
   // View state lives in the URL (#zoom/x/y in metres) so views can be bookmarked and shared.
   const fromHash = () => {
     const m = /^#(-?[\d.]+)\/(-?[\d.]+)\/(-?[\d.]+)$/.exec(location.hash);

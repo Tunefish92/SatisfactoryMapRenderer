@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+* 3D view: the world as a landscape built from the game's height data, with the in-game map and the factory
+  on it and labels for players, landmarks and stations. Opened with the 3D button on the map.
 * Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is
   made during the game data export and chosen in the *Map* dropdown.
 * Nicer admin login and logout: a login card with show/hide for the password and a signed-in bar with a

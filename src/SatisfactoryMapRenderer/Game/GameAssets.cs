@@ -69,6 +69,12 @@ public sealed class GameAssets : IDisposable
     /// <summary>The in-game map with the terrain shaded from the game's height data; null if it could not be made.</summary>
     public string? ReliefImagePath => File.Exists(Path.Combine(CacheDirectory, ReliefFileName)) ? Path.Combine(CacheDirectory, ReliefFileName) : null;
     private const string ReliefFileName = "relief.jpg";
+    /// <summary>The world's heights for the 3D view (16 bits per sample in the red and green channel); null without game data that has them.</summary>
+    public string? TerrainHeightsPath => File.Exists(Path.Combine(CacheDirectory, HeightsFileName)) && File.Exists(Path.Combine(CacheDirectory, TerrainInfoFileName))
+        ? Path.Combine(CacheDirectory, HeightsFileName) : null;
+    public string TerrainInfoPath => Path.Combine(CacheDirectory, TerrainInfoFileName);
+    private const string HeightsFileName = "heights.png";
+    private const string TerrainInfoFileName = "terrain.json";
     private const string HeightData = "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test.HeightData_Test";
     public string? MapImagePath => Data.MapImage is { } name && File.Exists(Path.Combine(CacheDirectory, name)) ? Path.Combine(CacheDirectory, name) : null;
 
@@ -128,11 +134,16 @@ public sealed class GameAssets : IDisposable
             File.Copy(map, Path.Combine(directory, Path.GetFileName(map)), overwrite: true);
         if (_game?.TryReadIcon() is { } logo)
             File.WriteAllBytes(Path.Combine(directory, LogoFileName), logo);
-        // Game data extracted by an older version of this tool has no relief map yet.
-        if (ReliefImagePath is null && _game is not null)
+        // Game data extracted by an older version of this tool has no relief map or terrain heights yet.
+        if ((ReliefImagePath is null || TerrainHeightsPath is null) && _game is not null)
             CreateRelief();
         if (ReliefImagePath is { } relief)
             File.Copy(relief, Path.Combine(directory, ReliefFileName), overwrite: true);
+        if (TerrainHeightsPath is { } heights)
+        {
+            File.Copy(heights, Path.Combine(directory, HeightsFileName), overwrite: true);
+            File.Copy(TerrainInfoPath, Path.Combine(directory, TerrainInfoFileName), overwrite: true);
+        }
         File.Copy(DataFile, Path.Combine(directory, DataFileName), overwrite: true);
         _log($"  Exported {Directory.GetFiles(icons, "*.png").Length:N0} icons and {Data.Actors.Count:N0} level actors to {Path.GetFullPath(directory)}");
     }
@@ -184,6 +195,7 @@ public sealed class GameAssets : IDisposable
         {
             if (MapImagePath is not { } mapPath || Archive.TryLoadFloatTexture(HeightData) is not var (heights, size))
                 return;
+            SaveTerrain(heights, size);
 
             // Shading per height sample: Sobel gradient (which also smooths the 16-bit steps), lit from the north-west.
             const float exaggeration = 800f;
@@ -230,6 +242,68 @@ public sealed class GameAssets : IDisposable
             // The relief map is an extra; the in-game map alone is enough.
             _log($"  Relief map: not created ({ex.Message})");
         }
+    }
+
+    /// <summary>
+    /// Heights for the 3D view. The texture only holds values from 0 to 1; what they mean in the world is
+    /// found by comparing them with actors that stand on the ground (resource nodes), whose height is known.
+    /// </summary>
+    private void SaveTerrain(float[] heights, int size)
+    {
+        using (var packed = new SKBitmap(size, size, SKColorType.Rgba8888, SKAlphaType.Opaque))
+        {
+            var pixels = packed.GetPixelSpan();
+            for (int i = 0; i < heights.Length; i++)
+            {
+                int value = (int)Math.Clamp(Math.Round(heights[i] * 65535.0), 0, 65535);
+                pixels[i * 4] = (byte)(value >> 8);
+                pixels[i * 4 + 1] = (byte)value;
+                pixels[i * 4 + 3] = 255;
+            }
+            using var stream = File.Create(Path.Combine(CacheDirectory, HeightsFileName));
+            packed.Encode(stream, SKEncodedImageFormat.Png, 100);
+        }
+
+        // Height value and world Z of every ground actor inside the map.
+        var samples = new List<(double H, double Z)>();
+        foreach (var actor in Data.Actors.Where(a => ResourceClasses.Contains(a.Class) || a.Class == "BP_ResourceDeposit_C"))
+        {
+            double px = (actor.X - World.WorldBounds.MinX) / World.WorldBounds.Size * (size - 1);
+            double py = (actor.Y - World.WorldBounds.MinY) / World.WorldBounds.Size * (size - 1);
+            if (px < 0 || py < 0 || px > size - 1 || py > size - 1)
+                continue;
+            int x0 = (int)px, y0 = (int)py, x1 = Math.Min(x0 + 1, size - 1), y1 = Math.Min(y0 + 1, size - 1);
+            double fx = px - x0, fy = py - y0;
+            double h = heights[y0 * size + x0] * (1 - fx) * (1 - fy) + heights[y0 * size + x1] * fx * (1 - fy)
+                     + heights[y1 * size + x0] * (1 - fx) * fy + heights[y1 * size + x1] * fx * fy;
+            samples.Add((h, actor.Z));
+        }
+
+        // Straight line Z = a·h + b, fitted three times while dropping what does not fit (nodes in caves lie
+        // below the surface the height map shows).
+        double a = 0, b = 0, deviation = 0;
+        var used = samples;
+        for (int pass = 0; pass < 4 && used.Count >= 20; pass++)
+        {
+            double meanH = used.Average(s => s.H), meanZ = used.Average(s => s.Z);
+            double variance = used.Sum(s => (s.H - meanH) * (s.H - meanH));
+            if (variance < 1e-9)
+                break;
+            a = used.Sum(s => (s.H - meanH) * (s.Z - meanZ)) / variance;
+            b = meanZ - a * meanH;
+            double slope = a, offset = b;
+            deviation = Math.Sqrt(used.Average(s => Math.Pow(s.Z - (slope * s.H + offset), 2)));
+            double limit = Math.Max(2 * deviation, 300);
+            used = used.Where(s => Math.Abs(s.Z - (slope * s.H + offset)) <= limit).ToList();
+        }
+        if (a <= 0)
+        {
+            // No usable actors: assume the usual extent of the world, sea floor to the highest peaks.
+            (a, b) = (60000, -8000);
+        }
+
+        File.WriteAllText(TerrainInfoPath, System.Text.Json.JsonSerializer.Serialize(new { size, zAt0 = Math.Round(b), zAt1 = Math.Round(a + b) }));
+        _log($"  Terrain heights: {size} px, {b / 100:0} m to {(a + b) / 100:0} m (from {used.Count:N0} of {samples.Count:N0} ground actors, ±{deviation / 100:0.0} m)");
     }
 
     /// <summary>The in-game map is split into 2×2 textures; slice Map_A-B is column A, row B.</summary>
