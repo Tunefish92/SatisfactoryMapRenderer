@@ -101,10 +101,43 @@ With `docker run -e` and on Unraid, Compose is not involved; quote the password 
 
 ### Unraid
 
-The template for Unraid's Community Applications is kept in
-[Tunefish92/unraid-templates](https://github.com/Tunefish92/unraid-templates) (a copy is in
-[`unraid/`](unraid/satisfactory-map-renderer.xml)). It asks for the port, the data folder, the admin password and,
-optionally, the game folder.
+**From the Apps tab.** Search for *Satisfactory Map Renderer* in Community Applications and click *Install*. The
+template lives in [Tunefish92/unraid-templates](https://github.com/Tunefish92/unraid-templates); a copy is in
+[`unraid/`](unraid/satisfactory-map-renderer.xml).
+
+**If it is not listed (yet).** Put the template on the flash drive yourself, from the Unraid terminal:
+
+```
+wget -O /boot/config/plugins/dockerMan/templates-user/my-Satisfactory-Map-Renderer.xml \
+  https://raw.githubusercontent.com/Tunefish92/unraid-templates/main/templates/satisfactory-map-renderer.xml
+```
+
+Then open the **Docker** tab, click **Add Container** and choose *Satisfactory-Map-Renderer* from the
+**Template** list.
+
+**Settings in the template**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| WebUI Port | `8080` | Port the map is served on. Change it if another container already uses 8080. |
+| Data Path | `/mnt/user/appdata/satisfactory-map-renderer` | The rendered map, settings and fetched saves. |
+| Admin Password | – | **Required**, at least 8 characters, any characters. Unraid passes it on unchanged, so `$` needs no escaping here. |
+| Game Folder | empty | Normally not needed, see [Game icons and the in-game map](#game-icons-and-the-in-game-map). |
+| Max Zoom | `9` | Under *Show more settings*. Lower it to render faster and save disk space. |
+| PUID / PGID | `99` / `100` | Under *Show more settings*. Unraid's `nobody:users`, so the files in appdata have the usual owner. |
+
+Click **Apply**, then open the map from the container's **WebUI** menu entry and log in under *Save game* →
+*Admin login*.
+
+**With a dedicated server on the same Unraid box**, for example the `ich777/steamcmd:satisfactory` container:
+
+* *HTTPS API (recommended)*: in the map's *Save game* tab enter your Unraid server's IP address as host and the
+  server's game port (7777 by default; it must be mapped for TCP as well as UDP). Create the API token in the
+  game: *Server Manager* → *Console* → `server.GenerateAPIToken`. Leave "Verify certificate" off.
+* *SSH*: possible, but needs a key in `appdata/satisfactory-map-renderer/home/.ssh/` and SSH access to Unraid.
+  With that container the saves are in
+  `/mnt/user/appdata/satisfactory/.config/Epic/FactoryGame/Saved/SaveGames/server/` (the path depends on where
+  you mapped the server files).
 
 ### From this repository
 
