@@ -180,8 +180,10 @@ the factory in the game's own 3D models, placed with the positions and rotations
 ground shows the game's own ground textures where the game's landscape has them painted, with the sea, lakes
 and rivers as water; untick **Realistic ground** to see the in-game map on the terrain instead. Steep faces get
 the game's cliff texture, because the game's rocks are separate objects that the ground data does not cover. The
-models carry the game's textures, the machines in the standard FICSIT orange (custom paint from the save is not shown). Belts, pipes, rails and
-wires are simple strips at their real heights, and the few building types without a model are boxes. Drag to
+models carry the game's textures, the machines in the standard FICSIT orange (custom paint from the save is not shown). Conveyor
+belts, pipes, hypertubes and railway tracks are the game's own pieces laid along their paths (pipes in the
+standard orange); lifts and wires are simple strips at their real heights, and the few building types without a
+model are boxes. Drag to
 rotate, drag with the wheel button or Shift+drag to move, wheel to zoom towards the mouse; each factory layer can be switched off. Heights are
 the real ones, not exaggerated. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
 

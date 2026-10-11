@@ -274,12 +274,50 @@
         }
       }
       const l = layer.lines;
+      let lineCount = 0;
       for (let i = 0; i + 2 < l.length;) {
-        const color = rgb[l[i]], width = l[i + 1], count = l[i + 2];
+        const color = rgb[l[i]], width = l[i + 1], cls = l[i + 2], count = l[i + 3];
         // belts and rails are flat, pipes, hypertubes and wires round
         const thickness = layer.id === 'belts' ? 30 : layer.id === 'railways' ? 40 : layer.id === 'power' ? 25 : width;
         const wide = layer.id === 'power' ? 25 : width;
-        i += 3;
+        i += 4;
+        lineCount++;
+        const parts = cls >= 0 ? partMatrices[cls] : null, pieceLength = parts && parts.length ? F.pieces[cls] : 0;
+        if (pieceLength > 0) {
+          // The real thing: the game's piece of belt or pipe, repeated along the path and stretched to fit,
+          // as the game does it. Each piece runs straight from one point of the path to the next.
+          const at = [0];
+          for (let p = 0; p + 1 < count; p++) { const o = i + p * 3; at.push(at[p] + Math.hypot(l[o + 3] - l[o], l[o + 4] - l[o + 1], l[o + 5] - l[o + 2])); }
+          const total = at[count - 1], pieces = Math.max(1, Math.round(total / pieceLength));
+          const point = d => {
+            let p = 0;
+            while (p + 2 < count && at[p + 1] < d) p++;
+            const o = i + p * 3, t = at[p + 1] > at[p] ? (d - at[p]) / (at[p + 1] - at[p]) : 0;
+            return [l[o] + (l[o + 3] - l[o]) * t, l[o + 1] + (l[o + 4] - l[o + 1]) * t, l[o + 2] + (l[o + 5] - l[o + 2]) * t];
+          };
+          const tint = [0.5 + color[0] * 0.38, 0.5 + color[1] * 0.38, 0.5 + color[2] * 0.38];
+          let a = point(0);
+          for (let k = 1; k <= pieces && total > 1; k++) {
+            const b = point(total * k / pieces), x = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], length = Math.hypot(x[0], x[1], x[2]);
+            if (length > 0.5) {
+              for (const part of parts) {
+                const native = F.meshes[part.mesh][5] + F.meshes[part.mesh][8]; // the piece reaches from 0 to here along x
+                // sideways is level, up is at a right angle to both
+                let y = [-x[1], x[0], 0];
+                const flat = Math.hypot(y[0], y[1]);
+                y = flat > length * 0.02 ? [y[0] / flat, y[1] / flat, 0] : [0, 1, 0];
+                const z = [(x[1] * y[2] - x[2] * y[1]) / length, (x[2] * y[0] - x[0] * y[2]) / length, (x[0] * y[1] - x[1] * y[0]) / length], s = 1 / native;
+                let list = perMesh.get(part.mesh);
+                if (!list) perMesh.set(part.mesh, list = []);
+                list.push(x[0] * s, y[0], z[0], a[0] - centreX, x[1] * s, y[1], z[1], a[1] - centreY, x[2] * s, y[2], z[2], a[2], tint[0], tint[1], tint[2]);
+                triangleCount += F.meshes[part.mesh][1] / 3;
+              }
+            }
+            a = b;
+          }
+          i += count * 3;
+          continue;
+        }
         for (let p = 0; p + 1 < count; p++) {
           const o = i + p * 3;
           const dx = l[o + 3] - l[o], dz = l[o + 4] - l[o + 1], dy = l[o + 5] - l[o + 2], length = Math.hypot(dx, dy, dz);
@@ -289,7 +327,7 @@
         }
         i += count * 3;
       }
-      const entry = { id: layer.id, title: layer.title, visible: remembered[layer.id] ?? layer.visible, data: new Float32Array(out), count: out.length / 11, pieces: layer.boxes.length / 16 };
+      const entry = { id: layer.id, title: layer.title, visible: remembered[layer.id] ?? layer.visible, data: new Float32Array(out), count: out.length / 11, pieces: layer.boxes.length / 16 + lineCount };
       if (out.length || perMesh.size) factory.push(entry);
       for (const [mesh, data] of perMesh) meshInstances.push({ layer: entry, mesh, data: new Float32Array(data), count: data.length / 15 });
     }
@@ -382,7 +420,7 @@
     in vec3 vNormal, vWorld, vTint;
     in vec2 vUv;
     uniform vec3 eye, sun, haze;
-    uniform int kind;               // 0 one colour, 1 texture image, 2 the game's shared factory material
+    uniform int kind;               // 0 one colour, 1 texture image, 2 the game's shared factory material, 3 painted texture
     uniform vec3 flatColor, primaryPaint, secondaryPaint;
     uniform sampler2D albedo;
     uniform sampler2DArray factoryLayers;
@@ -391,6 +429,9 @@
       vec3 base;
       if (kind == 1) {
         base = texture(albedo, vUv).rgb;
+      } else if (kind == 3) {
+        // a painted surface: the paint, with the light and dark of the texture
+        base = flatColor * min(texture(albedo, vUv).rgb * 4.6, vec3(1.3));
       } else if (kind == 2) {
         // The texture coordinate lies in one of 3 × 3 squares; the square says which of the nine surface
         // types the face has. Inside the square the surface repeats.
@@ -415,7 +456,8 @@
   const srgb = c => c.map(v => Math.pow(v, 1.0)); // colours are used as they are, like the textures
   const materials = (F && F.materials || []).map(([kind, value]) => {
     const textured = kind.startsWith('texture');
-    const material = { kind: textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : [0.62, 0.64, 0.66], texture: null };
+    // pipes in the paint they have as standard, FICSIT orange
+    const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : kind === 'texture-painted' ? [0.93, 0.50, 0.20] : [0.62, 0.64, 0.66], texture: null };
     if (textured && modelData) {
       loadImage(`terrain/textures/${value}`).then(img => {
         const t = gl.createTexture();
@@ -710,10 +752,10 @@
           for (const section of item.sections) {
             const material = section.material || { kind: 0, color: [0.62, 0.64, 0.66] };
             // until its image is there, a textured surface is drawn in plain grey
-            const ready = material.kind === 1 ? material.texture : material.kind === 2 ? factoryTexture : true;
+            const ready = material.kind === 1 || material.kind === 3 ? material.texture : material.kind === 2 ? factoryTexture : true;
             gl.uniform1i(kind, ready ? material.kind : 0);
             gl.uniform3fv(flatColor, material.color);
-            if (material.kind === 1 && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
+            if ((material.kind === 1 || material.kind === 3) && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
             gl.drawElementsInstanced(gl.TRIANGLES, section.count, item.indexType, section.first * item.indexBytes, item.count);
           }
         }

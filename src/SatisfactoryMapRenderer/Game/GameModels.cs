@@ -26,7 +26,7 @@ public sealed record ModelMesh(int V, int I, bool Wide, long VertexOffset, long 
 /// <param name="Kind">
 /// "factory": the game's shared factory material, nine surface types picked by the texture coordinate;
 /// "texture": an image (<paramref name="Texture"/>, in the textures folder), "texture-mirrored": the same,
-/// repeated mirrored; "flat": one colour.
+/// repeated mirrored, "texture-painted": the same, as the detail of a painted surface; "flat": one colour.
 /// </param>
 /// <param name="Root">The master material at the top of the parent chain; tells the families of materials apart.</param>
 public sealed record ModelMaterial(string Name, string Kind, string? Texture, string? Color, string? Root = null);
@@ -52,6 +52,12 @@ public sealed class ModelLibrary
 
     /// <summary>Building class ("Build_ConstructorMk1_C") → the meshes it consists of.</summary>
     public Dictionary<string, List<ModelPart>> Classes { get; set; } = [];
+
+    /// <summary>
+    /// Classes that are laid along a path (belts, pipes, hypertubes): their one mesh runs along x and is
+    /// repeated, stretched to this length (cm) per piece.
+    /// </summary>
+    public Dictionary<string, double> Splines { get; set; } = [];
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -84,7 +90,7 @@ public sealed class ModelLibrary
 public static class GameModels
 {
     /// <summary>The level of detail with the fewest triangles that still has this many is used.</summary>
-    private const int WantedTriangles = 250;
+    private const int WantedTriangles = 250, RepeatedTriangles = 90;
 
     /// <summary>Helper geometry that is not part of what a building looks like.</summary>
     private static readonly string[] Ignored = ["Fog", "Clearance", "Hologram", "Arrow", "Collision", "Decal", "Snap", "Preview", "Guide", "Glow", "Trigger"];
@@ -110,6 +116,7 @@ public static class GameModels
         Directory.CreateDirectory(textureDirectory);
         var materials = new MaterialTable(library, textureDirectory);
         var meshObjects = new Dictionary<string, UStaticMesh>(StringComparer.Ordinal);
+        var repeated = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (string file in archive.Files.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
                                                          && Path.GetFileName(f).StartsWith("Build_", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
@@ -120,8 +127,21 @@ public static class GameModels
                 var exports = archive.LoadExports(file).ToList();
                 var parts = new List<ModelPart>();
 
-                // Most buildings list their meshes as "abstract instances" on the class defaults.
                 var defaults = exports.FirstOrDefault(e => e.Name == "Default__" + name + "_C");
+                // Belts, pipes and hypertubes: one piece of mesh, repeated along the path.
+                if (defaults is not null && defaults.TryGetValue(out FPackageIndex pieceIndex, "mMesh") && defaults.TryGetValue(out FPackageIndex _, "mSplineComponent")
+                    && Mesh(pieceIndex, meshObjects) is { } piece)
+                {
+                    double length = defaults.GetOrDefault<float>("mMeshLength");
+                    if (length <= 0)
+                        length = Math.Max(meshObjects[piece].RenderData?.Bounds?.BoxExtent.X * 2 ?? 0, 100);
+                    library.Classes[name + "_C"] = [Part(piece, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))];
+                    library.Splines[name + "_C"] = length;
+                    repeated.Add(piece);
+                    continue;
+                }
+
+                // Most buildings list their meshes as "abstract instances" on the class defaults.
                 if (defaults is not null && defaults.TryGetValue(out FPackageIndex instanceData, "mInstanceDataCDO") && !instanceData.IsNull
                     && instanceData.Load() is { } data && data.TryGetValue(out FStructFallback[] instances, "Instances"))
                 {
@@ -167,7 +187,8 @@ public static class GameModels
             {
                 try
                 {
-                    if (Write(mesh, stream, materials) is { } written)
+                    // a piece that is repeated thousands of times along belts and pipes may be coarser
+                    if (Write(mesh, stream, materials, repeated.Contains(name) ? RepeatedTriangles : WantedTriangles) is { } written)
                         library.Meshes[name] = written;
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -182,7 +203,10 @@ public static class GameModels
         {
             parts.RemoveAll(p => !library.Meshes.ContainsKey(p.Mesh));
             if (parts.Count == 0)
+            {
                 library.Classes.Remove(name);
+                library.Splines.Remove(name);
+            }
         }
         library.Save(directory);
         log($"  3D models: {library.Classes.Count:N0} buildings from {library.Meshes.Count:N0} meshes, " +
@@ -213,7 +237,7 @@ public static class GameModels
 
     private static double Round(double v) => Math.Round(v, 1);
 
-    private static ModelMesh? Write(UStaticMesh mesh, Stream stream, MaterialTable materials)
+    private static ModelMesh? Write(UStaticMesh mesh, Stream stream, MaterialTable materials, int wantedTriangles)
     {
         var lods = mesh.RenderData?.LODs?.Where(l => l is { SkipLod: false, PositionVertexBuffer.Verts.Length: > 0 } && l.IndexBuffer is { Length: >= 3 }).ToList();
         if (lods is not { Count: > 0 })
@@ -226,7 +250,7 @@ public static class GameModels
         var real = candidates.Where(c => c.Materials.Any(m => m >= 0)).ToList();
         if (real.Count == 0)
             return null;
-        var (lod, sectionMaterials) = real.Where(c => c.Lod.IndexBuffer!.Length / 3 >= WantedTriangles).OrderBy(c => c.Lod.IndexBuffer!.Length).FirstOrDefault() is { Lod: not null } wanted
+        var (lod, sectionMaterials) = real.Where(c => c.Lod.IndexBuffer!.Length / 3 >= wantedTriangles).OrderBy(c => c.Lod.IndexBuffer!.Length).FirstOrDefault() is { Lod: not null } wanted
             ? wanted
             : real.OrderByDescending(c => c.Lod.IndexBuffer!.Length).First();
 
@@ -377,14 +401,16 @@ public static class GameModels
                 {
                     // Foundations hold a quarter of their top in the texture and lay it out mirrored around the middle.
                     bool mirrored = chain.Last().Name.StartsWith("MM_BakedStencil", StringComparison.Ordinal);
-                    return new ModelMaterial(name, mirrored ? "texture-mirrored" : "texture", file, null, chain.Last().Name);
+                    // Pipes are painted: their texture is the dark, unpainted surface with its details.
+                    bool painted = chain.Last().Name == "MMU_Pipeline";
+                    return new ModelMaterial(name, mirrored ? "texture-mirrored" : painted ? "texture-painted" : "texture", file, null, chain.Last().Name);
                 }
             }
             if (chain.Last() is UMaterial root)
             {
                 var texture = root.ReferencedTextures?.FirstOrDefault(t => t is UTexture2D && AlbedoSuffixes.Any(s => t.Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
                 if (texture is not null && Texture(texture.Name, texture) is { } file)
-                    return new ModelMaterial(name, "texture", file, null, chain.Last().Name);
+                    return new ModelMaterial(name, root.Name == "MMU_Pipeline" ? "texture-painted" : "texture", file, null, chain.Last().Name);
             }
 
             string color = name.Contains("Glass", StringComparison.OrdinalIgnoreCase) ? "#9fc4d8"

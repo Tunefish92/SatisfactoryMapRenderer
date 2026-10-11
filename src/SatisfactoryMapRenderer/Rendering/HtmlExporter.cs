@@ -203,12 +203,13 @@ public static class HtmlExporter
                 }
                 w.WriteEndArray();
 
-                // per line: colour, width, number of points, then x, y, z of each point
+                // per line: colour, width, model class or -1, number of points, then x, y, z of each point
                 w.WriteStartArray("lines");
                 foreach (var f in features.Where(f => f.Shape == Shape.Line && f.Path is { Length: >= 4 } && f.PathZ?.Length == f.Path.Length / 2))
                 {
                     w.WriteNumberValue(Color(f.Color));
                     w.WriteNumberValue((long)Math.Round(f.Thickness));
+                    w.WriteNumberValue(library is not null && library.Splines.ContainsKey(f.Class) ? Class(f.Class) : -1);
                     w.WriteNumberValue(f.PathZ!.Length);
                     for (int i = 0; i < f.PathZ.Length; i++)
                     {
@@ -295,6 +296,12 @@ public static class HtmlExporter
                 CopyTexture(layer);
             }
         }
+        w.WriteEndArray();
+
+        // per class: 0, or for a class laid along a path the length of one piece of its mesh
+        w.WriteStartArray("pieces");
+        foreach (var name in classes.OrderBy(c => c.Value).Select(c => c.Key))
+            w.WriteNumberValue(library.Splines.GetValueOrDefault(name));
         w.WriteEndArray();
 
         // per class: parts as mesh, translation x y z, rotation x y z w, scale x y z
