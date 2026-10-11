@@ -13,6 +13,9 @@
 * Ground map: a new base map of the 2D view and its default, the world from above without any factory, made
   from the game's ground textures, water surfaces and heights. Bundled at 8192 px; `--render-ground-map`
   draws it at any size, and `maps/ground-map.jpg` replaces the bundled one.
+* 3D view: the resource nodes of the world (ore rocks, coal, quartz, SAM, sulfur, limestone, fracking vents) in
+  the game's own models and textures, as a layer of their own. The game's virtual textures can now be read,
+  which these use.
 * 3D view: water no longer shows under rocks and plateaus that cover it.
 * 3D view: conveyor lifts in the game's own pieces; arms and other animated parts of machines (quantum
   encoder, space elevator); buildings made from another building show its parts too (power tower with

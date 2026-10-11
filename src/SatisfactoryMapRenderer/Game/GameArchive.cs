@@ -168,11 +168,62 @@ public sealed class GameArchive : IDisposable
 
     public static SKBitmap? Decode(UTexture texture, int maxSize)
     {
+        if (texture.PlatformData is { VTData: { } tiled } platform && platform.Mips.Length == 0)
+            return DecodeVirtual(tiled, maxSize);
         var mip = maxSize > 0 ? texture.GetMipByMaxSize(maxSize) ?? texture.GetFirstMip() : texture.GetFirstMip();
         byte[]? data = mip?.BulkData?.Data;
         if (mip is null || data is null)
             return null;
         return Decode(texture.Format, data, mip.SizeX, mip.SizeY);
+    }
+
+    /// <summary>
+    /// A virtual texture: every level of detail is cut into square tiles with a border around each, stored
+    /// one after the other. Puts the tiles of the largest level not exceeding <paramref name="maxSize"/>
+    /// together again.
+    /// </summary>
+    private static SKBitmap? DecodeVirtual(FVirtualTextureBuiltData tiled, int maxSize)
+    {
+        if (tiled.NumLayers == 0 || tiled.TileSize == 0 || tiled.Width == 0 || tiled.Height == 0)
+            return null;
+        int level = 0;
+        while (maxSize > 0 && level + 1 < tiled.NumMips && Math.Max(tiled.Width >> level, tiled.Height >> level) > maxSize)
+            level++;
+        int width = (int)Math.Max(tiled.Width >> level, 1), height = (int)Math.Max(tiled.Height >> level, 1);
+        int tile = (int)tiled.TileSize, border = (int)tiled.TileBorderSize, physical = (int)tiled.GetPhysicalTileSize();
+        var result = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+        var target = result.GetPixelSpan();
+        for (int ty = 0; ty * tile < height; ty++)
+        {
+            for (int tx = 0; tx * tile < width; tx++)
+            {
+                uint address = 0;
+                for (int bit = 0; bit < 16; bit++)
+                    address |= (uint)((tx >> bit & 1) << (2 * bit) | (ty >> bit & 1) << (2 * bit + 1));
+                if (!tiled.IsValidAddress(level, address))
+                    continue;
+                var (chunkIndex, start, length) = tiled.GetTileData(level, address, 0);
+                if (chunkIndex < 0 || chunkIndex >= tiled.Chunks.Length)
+                    continue;
+                var chunk = tiled.Chunks[chunkIndex];
+                SKBitmap? piece = null;
+                // the length is not always recorded; it follows from the format: blocks of 4 × 4 pixels
+                if (length == 0)
+                    length = (uint)(physical / 4 * (physical / 4) * (tiled.LayerTypes[0] is EPixelFormat.PF_DXT1 or EPixelFormat.PF_BC4 ? 8 : 16));
+                if (chunk.CodecType[0] == EVirtualTextureCodec.RawGPU && chunk.BulkData?.Data is { } bytes && start + length <= bytes.Length)
+                    piece = Decode(tiled.LayerTypes[0], bytes.AsSpan((int)start, (int)length).ToArray(), physical, physical);
+                if (piece is null)
+                    continue;
+                using (piece)
+                {
+                    var source = piece.GetPixelSpan();
+                    int rows = Math.Min(tile, height - ty * tile), columns = Math.Min(tile, width - tx * tile);
+                    for (int y = 0; y < rows; y++)
+                        source.Slice(((y + border) * physical + border) * 4, columns * 4).CopyTo(target.Slice(((ty * tile + y) * width + tx * tile) * 4, columns * 4));
+                }
+            }
+        }
+        return result;
     }
 
     private static SKBitmap? Decode(EPixelFormat format, byte[] data, int width, int height)

@@ -37,6 +37,9 @@ public sealed record ModelMaterial(string Name, string Kind, string? Texture, st
 /// <summary>A mesh placed inside a building: translation (cm), rotation (quaternion x y z w) and scale, in the building's own space.</summary>
 public sealed record ModelPart(string Mesh, double[] T, double[] R, double[] S);
 
+/// <summary>Something that stands in the world of every save, like the rock of a resource node: a class of the library at a place.</summary>
+public sealed record WorldObject(string Class, double[] T, double[] R, double[] S);
+
 /// <summary>Index of the model library (models.json next to models.bin).</summary>
 public sealed class ModelLibrary
 {
@@ -61,6 +64,9 @@ public sealed class ModelLibrary
     /// between, and the piece at the other end. The value is the height (cm) of one piece in between.
     /// </summary>
     public Dictionary<string, double> Lifts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The rocks, crystals and vents of the world's resource nodes.</summary>
+    public List<WorldObject> Resources { get; set; } = [];
 
     /// <summary>
     /// Classes that are laid along a path (belts, pipes, hypertubes): their one mesh runs along x and is
@@ -135,6 +141,7 @@ public static class GameModels
         var materials = new MaterialTable(library, textureDirectory);
         var meshObjects = new Dictionary<string, UObject>(StringComparer.Ordinal);
         var repeated = new HashSet<string>(StringComparer.Ordinal);
+        var slotOverrides = new Dictionary<string, FPackageIndex?[]>(StringComparer.Ordinal); // meshes placed with other materials than their own
         var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
         var partKeys = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var liftPieces = new Dictionary<string, string>(StringComparer.Ordinal); // what later lifts take over from Mk.1
@@ -258,6 +265,8 @@ public static class GameModels
             }
         }
 
+        ReadResources(archive, library, meshObjects, slotOverrides);
+
         // A building made from another building (the power tower with a platform from the power tower) only
         // holds what it adds or changes; the rest is the other building's. Buildings that list their meshes
         // as instances list all of them.
@@ -292,7 +301,7 @@ public static class GameModels
                 try
                 {
                     // a piece that is repeated thousands of times along belts and pipes may be coarser
-                    if (Write(mesh, stream, materials, repeated.Contains(name) ? RepeatedTriangles : WantedTriangles) is { } written)
+                    if (Write(mesh, slotOverrides.GetValueOrDefault(name) ?? Slots(mesh), stream, materials, repeated.Contains(name) ? RepeatedTriangles : WantedTriangles) is { } written)
                         library.Meshes[name] = written;
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -315,11 +324,81 @@ public static class GameModels
             }
         }
         library.Save(directory);
-        log($"  3D models: {library.Classes.Count:N0} buildings from {library.Meshes.Count:N0} meshes, " +
+        library.Resources.RemoveAll(r => !library.Classes.ContainsKey(r.Class));
+        log($"  3D models: {library.Classes.Count:N0} buildings and {library.Resources.Count:N0} resource nodes from {library.Meshes.Count:N0} meshes, " +
             $"{library.Meshes.Values.Sum(m => (long)m.I) / 3:N0} triangles, {new FileInfo(Path.Combine(directory, ModelLibrary.DataFile)).Length / 1e6:0.0} MB; " +
             $"{library.Materials.Count:N0} materials ({library.Materials.Count(m => m.Kind == "factory")} factory, {library.Materials.Count(m => m.Kind.StartsWith("texture", StringComparison.Ordinal))} textured), " +
             $"{Directory.GetFiles(textureDirectory).Length} textures, {Directory.GetFiles(textureDirectory).Sum(f => new FileInfo(f).Length) / 1e6:0.0} MB");
         return library;
+    }
+
+    private const string LevelDirectory = "/Map/GameLevel01/", ResourceMeshes = "/Game/FactoryGame/Resource/RawResources/";
+
+    /// <summary>
+    /// The look of the resource nodes: the nodes themselves are invisible, next to each stands an ordinary
+    /// mesh of the level (a rock with ore, crystals, a vent). Some are the same mesh with the materials of
+    /// another resource.
+    /// </summary>
+    private static void ReadResources(GameArchive archive, ModelLibrary library, Dictionary<string, UObject> meshObjects, Dictionary<string, FPackageIndex?[]> slotOverrides)
+    {
+        var found = new System.Collections.Concurrent.ConcurrentBag<(FPackageIndex Mesh, FPackageIndex?[] Materials, FVector T, FQuat R, FVector S)>();
+        var levels = archive.Files.Where(f => f.Contains(LevelDirectory, StringComparison.OrdinalIgnoreCase) && f.EndsWith(".umap", StringComparison.OrdinalIgnoreCase)).ToList();
+        Parallel.ForEach(levels, new ParallelOptions { MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8) }, level =>
+        {
+            try
+            {
+                foreach (var component in archive.LoadExports(level).Where(e => e.ExportType == "StaticMeshComponent"))
+                {
+                    if (!component.TryGetValue(out FPackageIndex mesh, "StaticMesh") || mesh.ResolvedObject?.GetPathName() is not { } path
+                        || !path.StartsWith(ResourceMeshes, StringComparison.OrdinalIgnoreCase) || path.Contains("/Deposits/", StringComparison.OrdinalIgnoreCase)
+                        || (component.TryGetValue(out bool visible, "bVisible") && !visible))
+                        continue;
+                    var t = component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+                    var r = component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                    var s = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                    // a mesh that hangs on another component of its actor is placed relative to that one
+                    if (component.GetOrDefault<UObject?>("AttachParent") is { } parent)
+                    {
+                        var pt = parent.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+                        var pr = parent.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                        var ps = parent.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                        t = pt + pr.RotateVector(new FVector(t.X * ps.X, t.Y * ps.Y, t.Z * ps.Z));
+                        r = pr * r;
+                        s = new FVector(s.X * ps.X, s.Y * ps.Y, s.Z * ps.Z);
+                    }
+                    found.Add((mesh, component.GetOrDefault<FPackageIndex?[]>("OverrideMaterials") ?? [], t, r, s));
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // A level cell that cannot be read leaves out its nodes.
+            }
+        });
+
+        foreach (var (meshIndex, materials, t, r, s) in found.OrderBy(f => f.T.X).ThenBy(f => f.T.Y))
+        {
+            if (Mesh(meshIndex, meshObjects) is not { } mesh)
+                continue;
+            string variant = mesh;
+            if (materials.Any(m => m is { IsNull: false }))
+            {
+                // the mesh's own materials, except where the level names another one
+                variant = mesh + "@" + string.Join("+", materials.Select(m => m is { IsNull: false } ? m.Name : ""));
+                if (!meshObjects.ContainsKey(variant))
+                {
+                    var slots = (FPackageIndex?[])Slots(meshObjects[mesh]).Clone();
+                    for (int i = 0; i < slots.Length && i < materials.Length; i++)
+                        if (materials[i] is { IsNull: false })
+                            slots[i] = materials[i];
+                    slotOverrides[variant] = slots;
+                    meshObjects[variant] = meshObjects[mesh];
+                }
+            }
+            string name = "Resource:" + variant;
+            library.Classes.TryAdd(name, [Part(variant, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))]);
+            library.Resources.Add(new WorldObject(name, [Round(t.X), Round(t.Y), Round(t.Z)], [Math.Round(r.X, 5), Math.Round(r.Y, 5), Math.Round(r.Z, 5), Math.Round(r.W, 5)],
+                [Math.Round(s.X, 4), Math.Round(s.Y, 4), Math.Round(s.Z, 4)]));
+        }
     }
 
     private static string? Mesh(FPackageIndex index, Dictionary<string, UObject> meshes)
@@ -398,12 +477,11 @@ public static class GameModels
         _ => [],
     };
 
-    private static ModelMesh? Write(UObject mesh, Stream stream, MaterialTable materials, int wantedTriangles)
+    private static ModelMesh? Write(UObject mesh, FPackageIndex?[] slots, Stream stream, MaterialTable materials, int wantedTriangles)
     {
         var lods = Levels(mesh);
         if (lods.Count == 0)
             return null;
-        var slots = Slots(mesh);
 
         // Coarse, but not so coarse that the shape is lost, and not one of the levels that swap the real
         // materials for a stand-in.
@@ -562,7 +640,9 @@ public static class GameModels
             foreach (var instance in chain.OfType<UMaterialInstanceConstant>())
             {
                 var parameters = instance.TextureParameterValues ?? [];
-                var albedo = parameters.FirstOrDefault(p => AlbedoNames.Contains(p.ParameterInfo.Name.Text, StringComparer.OrdinalIgnoreCase))
+                // resource nodes name the texture that is really used "VT-Albedo"; their "Albedo" can be another resource's
+                var albedo = parameters.FirstOrDefault(p => p.ParameterInfo.Name.Text.Equals("VT-Albedo", StringComparison.OrdinalIgnoreCase))
+                             ?? parameters.FirstOrDefault(p => AlbedoNames.Contains(p.ParameterInfo.Name.Text, StringComparer.OrdinalIgnoreCase))
                              ?? parameters.FirstOrDefault(p => p.ParameterValue.ResolvedObject is { } t && AlbedoSuffixes.Any(s => t.Name.Text.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
                 if (albedo?.ParameterValue.ResolvedObject is { } texture && Texture(texture.Name.Text, albedo.ParameterValue) is { } file)
                 {
@@ -580,7 +660,12 @@ public static class GameModels
                     return new ModelMaterial(name, PaintedMaterials.Contains(root.Name) ? "texture-painted" : "texture", file, null, chain.Last().Name);
             }
 
-            string color = name.Contains("Glass", StringComparison.OrdinalIgnoreCase) ? "#9fc4d8"
+            // the ore in the middle of a resource node is bare metal or crystal without a colour texture
+            string color = name.Contains("Middle_Iron", StringComparison.OrdinalIgnoreCase) ? "#8a6659"
+                : name.Contains("Middle_Copper", StringComparison.OrdinalIgnoreCase) ? "#c0734a"
+                : name.Contains("Middle_Gold", StringComparison.OrdinalIgnoreCase) ? "#d6b24c"
+                : name.Contains("FrackingHole", StringComparison.OrdinalIgnoreCase) ? "#26221f"
+                : name.Contains("Glass", StringComparison.OrdinalIgnoreCase) ? "#9fc4d8"
                 : name.Contains("Concrete", StringComparison.OrdinalIgnoreCase) ? "#a9a9a4"
                 : name.Contains("Rubber", StringComparison.OrdinalIgnoreCase) ? "#2b2b2d"
                 : "#9aa0a6";

@@ -239,6 +239,28 @@ public static class HtmlExporter
                 w.WriteEndArray();
                 w.WriteEndObject();
             }
+            if (library is { Resources.Count: > 0 })
+            {
+                // The rocks of the resource nodes are part of the world, the same in every save.
+                w.WriteStartObject();
+                w.WriteString("id", "resources");
+                w.WriteString("title", "Resource nodes");
+                w.WriteBoolean("visible", true);
+                w.WriteStartArray("boxes");
+                foreach (var r in library.Resources)
+                {
+                    foreach (double v in new[]
+                             {
+                                 r.T[0], r.T[1], r.T[2], r.R[0] * 10000, r.R[1] * 10000, r.R[2] * 10000, r.R[3] * 10000,
+                                 r.S[0] * 1000, r.S[1] * 1000, r.S[2] * 1000, 100, 100, 100, 0, Color("#b4b9d6"), Class(r.Class),
+                             })
+                        w.WriteNumberValue((long)Math.Round(v));
+                }
+                w.WriteEndArray();
+                w.WriteStartArray("lines");
+                w.WriteEndArray();
+                w.WriteEndObject();
+            }
             w.WriteEndArray();
             w.WriteStartArray("colors");
             foreach (var color in colors.OrderBy(c => c.Value).Select(c => c.Key))
