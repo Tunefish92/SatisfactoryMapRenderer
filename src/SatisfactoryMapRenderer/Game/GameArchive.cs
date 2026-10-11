@@ -151,17 +151,35 @@ public sealed class GameArchive : IDisposable
         }
     }
 
+    /// <summary>The layers of a texture array (or the one image of a plain texture), each at most <paramref name="maxSize"/> px.</summary>
+    public static List<SKBitmap> DecodeLayers(UTexture texture, int maxSize)
+    {
+        var result = new List<SKBitmap>();
+        var mip = (texture.PlatformData?.Mips ?? []).FirstOrDefault(m => m.BulkData?.Data is not null && m.SizeX <= maxSize && m.SizeY <= maxSize)
+                  ?? texture.GetFirstMip();
+        if (mip?.BulkData?.Data is not { } data)
+            return result;
+        int layers = Math.Max(mip.SizeZ, 1), bytes = data.Length / layers;
+        for (int layer = 0; layer < layers; layer++)
+            if (Decode(texture.Format, data.AsSpan(layer * bytes, bytes).ToArray(), mip.SizeX, mip.SizeY) is { } bitmap)
+                result.Add(bitmap);
+        return result;
+    }
+
     public static SKBitmap? Decode(UTexture texture, int maxSize)
     {
         var mip = maxSize > 0 ? texture.GetMipByMaxSize(maxSize) ?? texture.GetFirstMip() : texture.GetFirstMip();
         byte[]? data = mip?.BulkData?.Data;
         if (mip is null || data is null)
             return null;
+        return Decode(texture.Format, data, mip.SizeX, mip.SizeY);
+    }
 
-        int width = mip.SizeX, height = mip.SizeY;
+    private static SKBitmap? Decode(EPixelFormat format, byte[] data, int width, int height)
+    {
         int blockWidth = (width + 3) / 4 * 4, blockHeight = (height + 3) / 4 * 4;
         byte[] bgra;
-        switch (texture.Format)
+        switch (format)
         {
             case EPixelFormat.PF_DXT1: Bc1.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;
             case EPixelFormat.PF_DXT3: Bc2.Decompress<ColorBGRA<byte>, byte>(data, blockWidth, blockHeight, out bgra); break;

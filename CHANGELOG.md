@@ -3,7 +3,7 @@
 ## Unreleased
 
 * 3D view: the world as a landscape built from the game's height data, with the in-game map on it and the
-  factory in the game's own 3D models (549 building types, untextured), belts, pipes and rails at their real
+  factory in the game's own 3D models and textures (548 building types), belts, pipes and rails at their real
   heights, and labels for players, landmarks and stations. Opened with the 3D button on the map.
 * Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is
   made during the game data export and chosen in the *Map* dropdown.

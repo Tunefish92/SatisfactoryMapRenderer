@@ -18,7 +18,7 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 
 * **Two base maps**: the in-game map and a relief map with shaded terrain.
 * **3D view**: the whole world as a 3D landscape you can rotate and zoom, with your factory standing on it in
-  the game's own shapes: machines, foundations, walls, ramps, stations. Belts, pipes, rails and power lines run
+  the game's own shapes and textures: machines, foundations, walls, ramps, stations. Belts, pipes, rails and power lines run
   at their real heights, and players, landmarks and stations are labelled.
 * **The whole factory**: foundations and walls, buildings (with their game icons when zoomed in), conveyor belts by
   tier, pipes and hypertubes, railways and the power grid.
@@ -177,7 +177,7 @@ in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
 The **3D** button under the zoom buttons opens the 3D view: the game's height data as a landscape with the map
 on it, and the factory in the game's own 3D models, placed with the positions and rotations from the save. The
-models are shown without textures, in a light tone with a hint of the 2D map's colours. Belts, pipes, rails and
+models carry the game's textures, the machines in the standard FICSIT orange (custom paint from the save is not shown). Belts, pipes, rails and
 wires are simple strips at their real heights, and the few building types without a model are boxes. Drag to
 rotate, right-drag or Shift+drag to move, wheel to zoom; each factory layer can be switched off. Heights are
 the real ones, not exaggerated. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.

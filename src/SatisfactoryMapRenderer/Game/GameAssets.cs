@@ -78,6 +78,7 @@ public sealed class GameAssets : IDisposable
     /// <summary>3D models of the buildables for the 3D view; null without game data that has them.</summary>
     public ModelLibrary? Models => _models ??= ModelLibrary.TryLoad(CacheDirectory);
     public string ModelDataPath => Path.Combine(CacheDirectory, ModelLibrary.DataFile);
+    public string ModelTextureDirectory => Path.Combine(CacheDirectory, ModelLibrary.TextureDirectory);
     private ModelLibrary? _models;
     private const string TerrainInfoFileName = "terrain.json";
     private const string HeightData = "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test.HeightData_Test";
@@ -151,6 +152,12 @@ public sealed class GameAssets : IDisposable
         {
             File.Copy(ModelDataPath, Path.Combine(directory, ModelLibrary.DataFile), overwrite: true);
             File.Copy(Path.Combine(CacheDirectory, ModelLibrary.IndexFile), Path.Combine(directory, ModelLibrary.IndexFile), overwrite: true);
+            string textures = Path.Combine(directory, ModelLibrary.TextureDirectory);
+            if (Directory.Exists(textures))
+                Directory.Delete(textures, recursive: true);
+            Directory.CreateDirectory(textures);
+            foreach (string file in Directory.GetFiles(ModelTextureDirectory))
+                File.Copy(file, Path.Combine(textures, Path.GetFileName(file)));
         }
         if (TerrainHeightsPath is { } heights)
         {

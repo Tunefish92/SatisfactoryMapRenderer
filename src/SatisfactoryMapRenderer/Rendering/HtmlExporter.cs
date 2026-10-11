@@ -206,34 +206,73 @@ public static class HtmlExporter
             w.WriteEndArray();
 
             if (library is not null && classes.Count > 0)
-                WriteModels(w, library, classes, game!.ModelDataPath, Path.Combine(outputDirectory, "terrain", "models.bin"));
+                WriteModels(w, library, classes, game!, Path.Combine(outputDirectory, "terrain"));
             w.WriteEndObject();
         }
         stream.Write(";\n"u8);
     }
 
     /// <summary>
-    /// Copies the meshes the save's buildings need out of the model library into terrain/models.bin and
-    /// describes them: per mesh where its data is, per class which meshes it consists of.
+    /// Copies what the save's buildings need out of the model library next to the map: the meshes into
+    /// terrain/models.bin, the texture images into terrain/textures. Describes them for the viewer: per mesh
+    /// where its data is and which material each run of indices has, per class which meshes it consists of.
     /// </summary>
-    private static void WriteModels(Utf8JsonWriter w, ModelLibrary library, Dictionary<string, int> classes, string libraryData, string target)
+    private static void WriteModels(Utf8JsonWriter w, ModelLibrary library, Dictionary<string, int> classes, GameAssets game, string terrainDirectory)
     {
         var meshes = new Dictionary<string, int>(StringComparer.Ordinal);
-        using var source = File.OpenRead(libraryData);
-        using var output = File.Create(target);
+        var materials = new Dictionary<int, int>();
+        using var source = File.OpenRead(game.ModelDataPath);
+        using var output = File.Create(Path.Combine(terrainDirectory, "models.bin"));
+
+        string textures = Path.Combine(terrainDirectory, ModelLibrary.TextureDirectory);
+        if (Directory.Exists(textures))
+            Directory.Delete(textures, recursive: true);
+        Directory.CreateDirectory(textures);
+        void CopyTexture(string file) => File.Copy(Path.Combine(game.ModelTextureDirectory, file), Path.Combine(textures, file), overwrite: true);
 
         w.WriteStartArray("meshes");
         foreach (var name in classes.Keys.SelectMany(c => library.Classes[c]).Select(p => p.Mesh).Distinct(StringComparer.Ordinal))
         {
             var mesh = library.Meshes[name];
             meshes[name] = meshes.Count;
-            long vertexOffset = Copy(mesh.VertexOffset, mesh.V * 10L);
+            long vertexOffset = Copy(mesh.VertexOffset, mesh.V * (long)GameModels.VertexBytes);
             long indexOffset = Copy(mesh.IndexOffset, mesh.I * (mesh.Wide ? 4L : 2L));
-            // vertex count, index count, wide indices, vertex offset, index offset, bounds min x y z, bounds size x y z
+            // vertex count, index count, wide indices, vertex offset, index offset, bounds min x y z, bounds size x y z,
+            // then per section: first index, index count, material
             w.WriteStartArray();
             foreach (double v in new double[] { mesh.V, mesh.I, mesh.Wide ? 1 : 0, vertexOffset, indexOffset, mesh.Min[0], mesh.Min[1], mesh.Min[2], mesh.Size[0], mesh.Size[1], mesh.Size[2] })
                 w.WriteNumberValue(v);
+            foreach (var section in mesh.Sections)
+            {
+                w.WriteNumberValue(section[0]);
+                w.WriteNumberValue(section[1]);
+                w.WriteNumberValue(materials.TryGetValue(section[2], out int m) ? m : materials[section[2]] = materials.Count);
+            }
             w.WriteEndArray();
+        }
+        w.WriteEndArray();
+
+        // per material: kind, then the texture's file name or the colour
+        w.WriteStartArray("materials");
+        foreach (var material in materials.OrderBy(m => m.Value).Select(m => library.Materials[m.Key]))
+        {
+            w.WriteStartArray();
+            w.WriteStringValue(material.Kind);
+            w.WriteStringValue(material.Texture ?? material.Color ?? "");
+            w.WriteEndArray();
+            if (material.Texture is not null)
+                CopyTexture(material.Texture);
+        }
+        w.WriteEndArray();
+
+        w.WriteStartArray("factoryLayers");
+        if (materials.Keys.Any(m => library.Materials[m].Kind == "factory"))
+        {
+            foreach (string layer in library.FactoryLayers)
+            {
+                w.WriteStringValue(layer);
+                CopyTexture(layer);
+            }
         }
         w.WriteEndArray();
 

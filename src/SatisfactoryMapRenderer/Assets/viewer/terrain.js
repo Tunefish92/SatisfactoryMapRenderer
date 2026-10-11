@@ -315,10 +315,13 @@
     layout(location = 3) in vec4 row1;
     layout(location = 4) in vec4 row2;
     layout(location = 5) in vec3 tint;
+    layout(location = 6) in vec2 uv;
     uniform mat4 viewProjection;
     uniform vec3 boundsMin, boundsSize;
     out vec3 vNormal, vWorld, vTint;
+    out vec2 vUv;
     void main() {
+      vUv = uv;
       vec4 local = vec4(boundsMin + (position + 32768.0) / 65535.0 * boundsSize, 1.0);
       vec3 p = vec3(dot(row0, local), dot(row1, local), dot(row2, local));
       vWorld = vec3(p.x, p.z, p.y);
@@ -328,24 +331,91 @@
       gl_Position = viewProjection * vec4(vWorld, 1.0);
     }`, `#version 300 es
     precision highp float;
+    precision highp sampler2DArray;
     in vec3 vNormal, vWorld, vTint;
+    in vec2 vUv;
     uniform vec3 eye, sun, haze;
+    uniform int kind;               // 0 one colour, 1 texture image, 2 the game's shared factory material
+    uniform vec3 flatColor, primaryPaint, secondaryPaint;
+    uniform sampler2D albedo;
+    uniform sampler2DArray factoryLayers;
     out vec4 color;
     void main() {
+      vec3 base;
+      if (kind == 1) {
+        base = texture(albedo, vUv).rgb;
+      } else if (kind == 2) {
+        // The texture coordinate lies in one of 3 × 3 squares; the square says which of the nine surface
+        // types the face has. Inside the square the surface repeats.
+        vec2 square = clamp(floor(fract(vUv) * 3.0), 0.0, 2.0);
+        // the layers are counted from the bottom row of squares upwards
+        float layer = square.x + (2.0 - square.y) * 3.0;
+        base = texture(factoryLayers, vec3(fract(vUv * 3.0) * 4.0, layer)).rgb;
+        // the painted metals are white in the texture and take the factory's colours
+        if (abs(layer - 1.0) < 0.5) base *= primaryPaint;
+        else if (layer < 0.5) base *= secondaryPaint;
+      } else {
+        base = flatColor;
+      }
       vec3 n = normalize(vNormal);
-      float light = 0.42 + 0.62 * max(dot(n, sun), 0.0) + 0.16 * n.y;
+      float light = 0.40 + 0.50 * max(dot(n, sun), 0.0) + 0.12 * n.y;
       float fog = smoothstep(0.55, 1.6, distance(vWorld, eye) / 900000.0);
-      color = vec4(mix(vTint * light, haze, fog * 0.55), 1.0);
+      color = vec4(mix(base * light, haze, fog * 0.55), 1.0);
     }`);
+
+  // Materials: texture images load in the background and appear when they are there.
+  const hex = c => { const n = parseInt(String(c).slice(1), 16) || 0x9aa0a6; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+  const srgb = c => c.map(v => Math.pow(v, 1.0)); // colours are used as they are, like the textures
+  const materials = (F && F.materials || []).map(([kind, value]) => {
+    const textured = kind.startsWith('texture');
+    const material = { kind: textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : [0.62, 0.64, 0.66], texture: null };
+    if (textured && modelData) {
+      loadImage(`terrain/textures/${value}`).then(img => {
+        const t = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        const wrap = kind === 'texture-mirrored' ? gl.MIRRORED_REPEAT : gl.REPEAT;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        material.texture = t;
+        needsDraw = true;
+      }).catch(() => { /* stays grey */ });
+    }
+    return material;
+  });
+  let factoryTexture = null;
+  if (modelData && F.factoryLayers && F.factoryLayers.length === 9) {
+    Promise.all(F.factoryLayers.map(f => loadImage(`terrain/textures/${f}`))).then(images => {
+      const size = images[0].width, sheet = document.createElement('canvas');
+      sheet.width = size; sheet.height = size * images.length;
+      const sc = sheet.getContext('2d');
+      images.forEach((img, i) => sc.drawImage(img, 0, i * size, size, size));
+      const t = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
+      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA, size, size, images.length, 0, gl.RGBA, gl.UNSIGNED_BYTE, sc.getImageData(0, 0, size, size * images.length).data);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+      factoryTexture = t;
+      needsDraw = true;
+    }).catch(() => { /* the factory surfaces stay grey */ });
+  }
   const meshBuffers = new Map();
   for (const item of meshInstances) {
-    const [vertexCount, indexCount, wide, vertexOffset, indexOffset, minX, minY, minZ, sizeX, sizeY, sizeZ] = F.meshes[item.mesh];
+    const [vertexCount, indexCount, wide, vertexOffset, indexOffset, minX, minY, minZ, sizeX, sizeY, sizeZ, ...sectionNumbers] = F.meshes[item.mesh];
+    const sections = [];
+    for (let i = 0; i + 2 < sectionNumbers.length; i += 3) sections.push({ first: sectionNumbers[i], count: sectionNumbers[i + 1], material: materials[sectionNumbers[i + 2]] });
     let shared = meshBuffers.get(item.mesh);
     if (!shared) {
       shared = { vertices: gl.createBuffer(), indices: gl.createBuffer() };
       gl.bindVertexArray(null);
       gl.bindBuffer(gl.ARRAY_BUFFER, shared.vertices);
-      gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(modelData, vertexOffset, vertexCount * 10), gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(modelData, vertexOffset, vertexCount * 20), gl.STATIC_DRAW);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shared.indices);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array(modelData, indexOffset, indexCount * (wide ? 4 : 2)), gl.STATIC_DRAW);
       meshBuffers.set(item.mesh, shared);
@@ -353,8 +423,9 @@
     item.vao = gl.createVertexArray();
     gl.bindVertexArray(item.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, shared.vertices);
-    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.SHORT, false, 10, 0);
-    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.BYTE, true, 10, 6);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.SHORT, false, 20, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.BYTE, true, 20, 6);
+    gl.enableVertexAttribArray(6); gl.vertexAttribPointer(6, 2, gl.FLOAT, false, 20, 12);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shared.indices);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
     gl.bufferData(gl.ARRAY_BUFFER, item.data, gl.STATIC_DRAW);
@@ -363,7 +434,7 @@
       gl.vertexAttribPointer(location, size, gl.FLOAT, false, 60, offset);
       gl.vertexAttribDivisor(location, 1);
     }
-    Object.assign(item, { indexCount, indexType: wide ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, min: [minX, minY, minZ], size: [sizeX, sizeY, sizeZ], data: null });
+    Object.assign(item, { sections, indexBytes: wide ? 4 : 2, indexType: wide ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, min: [minX, minY, minZ], size: [sizeX, sizeY, sizeZ], data: null });
   }
   modelData = null;
   gl.bindVertexArray(vao);
@@ -528,14 +599,29 @@
         gl.uniform3fv(m('eye'), eye);
         gl.uniform3fv(m('sun'), norm([-0.55, 0.62, -0.55]));
         gl.uniform3fv(m('haze'), sky);
-        const boundsMin = m('boundsMin'), boundsSize = m('boundsSize');
+        const boundsMin = m('boundsMin'), boundsSize = m('boundsSize'), kind = m('kind'), flatColor = m('flatColor');
+        gl.uniform1i(m('albedo'), 2);
+        gl.uniform1i(m('factoryLayers'), 3);
+        gl.uniform3fv(m('primaryPaint'), [0.98, 0.58, 0.29]);   // the factory's standard colours: FICSIT orange
+        gl.uniform3fv(m('secondaryPaint'), [0.37, 0.40, 0.55]); // and blue-grey
+        if (factoryTexture) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D_ARRAY, factoryTexture); }
+        gl.activeTexture(gl.TEXTURE2);
         for (const item of meshInstances) {
           if (!item.layer.visible) continue;
           gl.uniform3fv(boundsMin, item.min);
           gl.uniform3fv(boundsSize, item.size);
           gl.bindVertexArray(item.vao);
-          gl.drawElementsInstanced(gl.TRIANGLES, item.indexCount, item.indexType, 0, item.count);
+          for (const section of item.sections) {
+            const material = section.material || { kind: 0, color: [0.62, 0.64, 0.66] };
+            // until its image is there, a textured surface is drawn in plain grey
+            const ready = material.kind === 1 ? material.texture : material.kind === 2 ? factoryTexture : true;
+            gl.uniform1i(kind, ready ? material.kind : 0);
+            gl.uniform3fv(flatColor, material.color);
+            if (material.kind === 1 && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
+            gl.drawElementsInstanced(gl.TRIANGLES, section.count, item.indexType, section.first * item.indexBytes, item.count);
+          }
         }
+        gl.activeTexture(gl.TEXTURE0);
       }
     }
     placeLabels();
