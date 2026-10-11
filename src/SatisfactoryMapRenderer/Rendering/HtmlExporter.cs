@@ -18,6 +18,8 @@ public static class HtmlExporter
         var icons = CopyIcons(world, outputDirectory, game);
         string? logo = CopyLogo(outputDirectory, game);
         bool terrain = CopyTerrain(outputDirectory, game);
+        if (terrain)
+            WriteFactory3D(world, outputDirectory);
 
         using var stream = File.Create(Path.Combine(outputDirectory, "map-data.js"));
         stream.Write("window.MAP_DATA = "u8);
@@ -126,6 +128,71 @@ public static class HtmlExporter
         }
         File.WriteAllText(stamp, wanted);
         return true;
+    }
+
+    /// <summary>
+    /// The factory for the 3D view (terrain/factory.js): every building as a box with an estimated height,
+    /// belts, pipes, rails and power lines as chains of points at their real height. Numbers are whole
+    /// centimetres to keep the file small.
+    /// </summary>
+    private static void WriteFactory3D(MapWorld world, string outputDirectory)
+    {
+        var layers = new[] { Layers.Foundations, Layers.Buildings, Layers.Belts, Layers.Pipes, Layers.Railways, Layers.Power };
+        var colors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        int Color(string color) => colors.TryGetValue(color, out int i) ? i : colors[color] = colors.Count;
+
+        using var stream = File.Create(Path.Combine(outputDirectory, "terrain", "factory.js"));
+        stream.Write("window.MAP_3D = "u8);
+        using (var w = new Utf8JsonWriter(stream))
+        {
+            w.WriteStartObject();
+            w.WriteStartArray("layers");
+            foreach (var layer in layers)
+            {
+                var features = world.In(layer).ToList();
+                if (features.Count == 0)
+                    continue;
+                w.WriteStartObject();
+                w.WriteString("id", layer.Id);
+                w.WriteString("title", layer.Title);
+                w.WriteBoolean("visible", layer.VisibleByDefault);
+
+                // x, y, bottom, yaw (1/1000 rad), size x, size y, height, colour
+                w.WriteStartArray("boxes");
+                foreach (var f in features.Where(f => f.Shape == Shape.Box))
+                {
+                    var category = Enum.TryParse<BuildCategory>(f.Group, out var parsed) ? parsed : BuildCategory.Other;
+                    var (height, baseOffset) = Catalog.HeightOf(f.Class, category);
+                    foreach (double v in new[] { f.Position.X, f.Position.Y, f.Position.Z + baseOffset, f.Yaw * 1000, f.SizeX, f.SizeY, height, Color(f.Color) })
+                        w.WriteNumberValue((long)Math.Round(v));
+                }
+                w.WriteEndArray();
+
+                // per line: colour, width, number of points, then x, y, z of each point
+                w.WriteStartArray("lines");
+                foreach (var f in features.Where(f => f.Shape == Shape.Line && f.Path is { Length: >= 4 } && f.PathZ?.Length == f.Path.Length / 2))
+                {
+                    w.WriteNumberValue(Color(f.Color));
+                    w.WriteNumberValue((long)Math.Round(f.Thickness));
+                    w.WriteNumberValue(f.PathZ!.Length);
+                    for (int i = 0; i < f.PathZ.Length; i++)
+                    {
+                        w.WriteNumberValue((long)Math.Round(f.Path![i * 2]));
+                        w.WriteNumberValue((long)Math.Round(f.Path[i * 2 + 1]));
+                        w.WriteNumberValue((long)Math.Round(f.PathZ[i]));
+                    }
+                }
+                w.WriteEndArray();
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            w.WriteStartArray("colors");
+            foreach (var color in colors.OrderBy(c => c.Value).Select(c => c.Key))
+                w.WriteStringValue(color);
+            w.WriteEndArray();
+            w.WriteEndObject();
+        }
+        stream.Write(";\n"u8);
     }
 
     private const string GameLogoFile = "game-logo.png";

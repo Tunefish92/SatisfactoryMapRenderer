@@ -538,6 +538,7 @@ public sealed class WorldExtractor
                 points.Add((Vec(pl, "Location"), Vec(pl, "ArriveTangent"), Vec(pl, "LeaveTangent")));
 
         var path = new List<double>(points.Count * 8);
+        var heights = new List<double>(points.Count * 4);
         double length = 0;
         Vector3? previous = null;
         void Emit(Vector3 local)
@@ -551,6 +552,7 @@ public sealed class WorldExtractor
             previous = world;
             path.Add(world.X);
             path.Add(world.Y);
+            heights.Add(world.Z);
         }
 
         Emit(points[0].Location);
@@ -573,6 +575,7 @@ public sealed class WorldExtractor
             Class = e.ShortClassName,
             Position = e.Transform.Translation,
             Path = [.. path],
+            PathZ = [.. heights],
             Thickness = width,
             Color = color,
             Group = info.Name,
@@ -603,6 +606,7 @@ public sealed class WorldExtractor
             Class = e.ShortClassName,
             Position = a,
             Path = [a.X, a.Y, b.X, b.Y],
+            PathZ = [a.Z, b.Z],
             Thickness = 40,
             Color = e.ShortClassName.Contains("Xmass") ? "#ff7675" : "#f7dc6f",
             Group = info.Name,

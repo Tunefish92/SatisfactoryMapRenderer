@@ -71,6 +71,9 @@ public sealed class MapFeature
     /// <summary>World XY pairs for <see cref="Shape.Line"/>.</summary>
     public double[]? Path { get; init; }
 
+    /// <summary>World Z of every point of <see cref="Path"/>, for the 3D view.</summary>
+    public double[]? PathZ { get; init; }
+
     /// <summary>Line width (lines) or diameter (points) in world units; rendering enforces a minimum pixel size.</summary>
     public double Thickness { get; init; }
 

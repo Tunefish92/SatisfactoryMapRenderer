@@ -281,6 +281,53 @@ public static partial class Catalog
         return dot >= 0 ? path[(dot + 1)..] : path;
     }
 
+    /// <summary>Approximate heights (cm) of buildings for the 3D view, by a part of the class name. First match wins.</summary>
+    private static readonly (string Part, double Height)[] Heights =
+    [
+        ("SpaceElevator", 11000), ("RadarTower", 11800), ("HadronCollider", 3200), ("QuantumEncoder", 2100),
+        ("GeneratorNuclear", 3900), ("GeneratorCoal", 3600), ("GeneratorFuel", 2700), ("GeneratorGeoThermal", 2400),
+        ("GeneratorBiomass", 700), ("GeneratorIntegratedBiomass", 300), ("OilRefinery", 3100), ("Blender", 1500),
+        ("Converter", 1300), ("Packager", 800), ("ManufacturerMk1", 1000), ("AssemblerMk1", 500), ("ConstructorMk1", 500),
+        ("FoundryMk1", 900), ("SmelterMk1", 700), ("MinerMk", 1800), ("OilPump", 2000), ("WaterPump", 2600),
+        ("FrackingSmasher", 2300), ("FrackingExtractor", 500), ("IndustrialTank", 1200), ("PipeStorageTank", 600),
+        ("StorageContainerMk2", 800), ("StorageContainerMk1", 400), ("CentralStorage", 600), ("StoragePlayer", 200),
+        ("ResourceSinkShop", 600), ("ResourceSink", 2400), ("TradingPost", 800), ("Mam", 500), ("Workshop", 300),
+        ("BlueprintDesigner", 3300), ("PowerStorage", 1200), ("PowerTower", 3000), ("PowerSwitch", 300),
+        ("TrainStation", 1500), ("TrainDocking", 1500), ("TrainPlatform", 200), ("RailroadSwitchControl", 200),
+        ("DroneStation", 1200), ("TruckStation", 1200), ("Portal", 1600), ("AlienPowerBuilding", 2200),
+        ("JumpPad", 200), ("LandingPad", 100), ("LookoutTower", 2400), ("Ladder", 400), ("XmassTree", 2400),
+        ("ConveyorAttachment", 200), ("PipelinePump", 250), ("PipelineJunction", 150), ("Valve", 150),
+        ("PipelineSupport", 200), ("PipeHyperSupport", 200), ("ConveyorPole", 200), ("PowerPoleWall", 100), ("PowerPole", 800),
+        ("Sign", 200), ("Beam", 100), ("Pillar", 400),
+    ];
+
+    /// <summary>
+    /// How tall a buildable is and where its bottom lies relative to its position. Foundations, ramps and
+    /// walls carry their height in the class name ("8x4" = 4 m); foundations are positioned at their middle.
+    /// </summary>
+    public static (double Height, double BaseOffset) HeightOf(string className, BuildCategory category)
+    {
+        if (category is BuildCategory.Foundation or BuildCategory.Wall)
+        {
+            var size = FootprintSize().Match(className);
+            double height = size.Success ? Math.Clamp(int.Parse(size.Groups[2].Value), 1, 8) * 100.0 : category == BuildCategory.Wall ? 400 : 100;
+            return category == BuildCategory.Foundation ? (height, -height / 2) : (height, 0);
+        }
+        foreach (var (part, height) in Heights)
+            if (className.Contains(part, StringComparison.Ordinal))
+                return (height, 0);
+        return (category switch
+        {
+            BuildCategory.Production => 800, BuildCategory.Extraction => 1500, BuildCategory.Power => 1200,
+            BuildCategory.Storage => 400, BuildCategory.Transport => 1000, BuildCategory.Special => 800,
+            BuildCategory.Walkway => 50, BuildCategory.Decor => 200, BuildCategory.PowerPole => 800,
+            _ => 200,
+        }, 0);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"_(\d+)x(\d+)")]
+    private static partial System.Text.RegularExpressions.Regex FootprintSize();
+
     public static BuildInfo? GetBuildable(string classPath)
     {
         string shortName = ShortName(classPath);

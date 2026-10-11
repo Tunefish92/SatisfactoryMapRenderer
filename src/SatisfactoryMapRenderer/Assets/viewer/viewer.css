@@ -972,3 +972,6 @@ body.terrain-page { overflow: hidden; }
 
 /* Button on the 2D map that opens the 3D view */
 .leaflet-bar a.view-3d { font: 700 12px var(--font-heading); letter-spacing: 0.02em; }
+
+#factory-layers .option { justify-content: flex-start; }
+#factory-layers .count { margin-left: auto; color: var(--color-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

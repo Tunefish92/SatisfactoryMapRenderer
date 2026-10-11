@@ -156,6 +156,123 @@
     return t;
   }
 
+  // ---------------------------------------------------------------- the factory as boxes
+
+  // Every building is a box; every piece of belt, pipe, rail or wire is a long thin box between two points.
+  // One instance: centre (3), half size (3), yaw, pitch, colour (3).
+  const F = window.MAP_3D;
+  const factory = [];
+  const centreX = W.minX + W.size / 2, centreY = W.minY + W.size / 2;
+  if (F && F.layers) {
+    const rgb = F.colors.map(c => { const n = parseInt(c.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; });
+    const remembered = (() => { try { return JSON.parse(localStorage.getItem('smr:layers3d')) || {}; } catch { return {}; } })();
+    for (const layer of F.layers) {
+      const out = [];
+      const add = (cx, cy, cz, hx, hy, hz, yaw, pitch, color) => out.push(cx, cy, cz, hx, hy, hz, yaw, pitch, color[0], color[1], color[2]);
+      const b = layer.boxes;
+      for (let i = 0; i + 7 < b.length; i += 8) {
+        add(b[i] - centreX, b[i + 2] + b[i + 6] / 2, b[i + 1] - centreY, b[i + 4] / 2, b[i + 6] / 2, b[i + 5] / 2, b[i + 3] / 1000, 0, rgb[b[i + 7]]);
+      }
+      const l = layer.lines;
+      for (let i = 0; i + 2 < l.length;) {
+        const color = rgb[l[i]], width = l[i + 1], count = l[i + 2];
+        // belts and rails are flat, pipes, hypertubes and wires round
+        const thickness = layer.id === 'belts' ? 30 : layer.id === 'railways' ? 40 : layer.id === 'power' ? 25 : width;
+        const wide = layer.id === 'power' ? 25 : width;
+        i += 3;
+        for (let p = 0; p + 1 < count; p++) {
+          const o = i + p * 3;
+          const dx = l[o + 3] - l[o], dz = l[o + 4] - l[o + 1], dy = l[o + 5] - l[o + 2], length = Math.hypot(dx, dy, dz);
+          if (length < 1) continue;
+          add((l[o] + l[o + 3]) / 2 - centreX, (l[o + 2] + l[o + 5]) / 2 + thickness / 2, (l[o + 1] + l[o + 4]) / 2 - centreY,
+            length / 2 + wide * 0.25, thickness / 2, wide / 2, Math.atan2(dz, dx), Math.asin(dy / length), color);
+        }
+        i += count * 3;
+      }
+      if (out.length) factory.push({ id: layer.id, title: layer.title, visible: remembered[layer.id] ?? layer.visible, data: new Float32Array(out), count: out.length / 11 });
+    }
+  }
+
+  const boxes = program(`#version 300 es
+    layout(location = 0) in vec3 corner;   // unit cube, -1..1
+    layout(location = 1) in vec3 normal;
+    layout(location = 2) in vec3 centre;
+    layout(location = 3) in vec3 halfSize;
+    layout(location = 4) in vec2 turn;     // yaw, pitch
+    layout(location = 5) in vec3 tint;
+    uniform mat4 viewProjection;
+    uniform float exaggeration;
+    out vec3 vNormal, vWorld, vTint;
+    vec3 turned(vec3 v) {
+      float cp = cos(turn.y), sp = sin(turn.y), cy = cos(turn.x), sy = sin(turn.x);
+      v = vec3(v.x * cp - v.y * sp, v.x * sp + v.y * cp, v.z);   // tilt along its length
+      return vec3(v.x * cy - v.z * sy, v.y, v.x * sy + v.z * cy); // then turn on the ground
+    }
+    void main() {
+      vec3 p = centre + turned(corner * halfSize);
+      vWorld = vec3(p.x, p.y * exaggeration, p.z);
+      vNormal = turned(normal);
+      vTint = tint;
+      gl_Position = viewProjection * vec4(vWorld, 1.0);
+    }`, `#version 300 es
+    precision highp float;
+    in vec3 vNormal, vWorld, vTint;
+    uniform vec3 eye, sun, haze;
+    out vec4 color;
+    void main() {
+      vec3 n = normalize(vNormal);
+      float light = 0.5 + 0.55 * max(dot(n, sun), 0.0) + 0.18 * n.y;
+      float fog = smoothstep(0.55, 1.6, distance(vWorld, eye) / 900000.0);
+      color = vec4(mix(vTint * light, haze, fog * 0.55), 1.0);
+    }`);
+
+  // A cube with a normal per face.
+  const cube = [];
+  for (const [n, u, v] of [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, 0, 1], [0, 1, 0]], [[0, 1, 0], [0, 0, 1], [1, 0, 0]],
+    [[0, -1, 0], [1, 0, 0], [0, 0, 1]], [[0, 0, 1], [1, 0, 0], [0, 1, 0]], [[0, 0, -1], [0, 1, 0], [1, 0, 0]]]) {
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) {
+      cube.push(n[0] + u[0] * a + v[0] * b, n[1] + u[1] * a + v[1] * b, n[2] + u[2] * a + v[2] * b, n[0], n[1], n[2]);
+    }
+  }
+  const cubeBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cube), gl.STATIC_DRAW);
+  for (const layer of factory) {
+    layer.vao = gl.createVertexArray();
+    gl.bindVertexArray(layer.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuffer);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, layer.data, gl.STATIC_DRAW);
+    for (const [location, size, offset] of [[2, 3, 0], [3, 3, 12], [4, 2, 24], [5, 3, 32]]) {
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, size, gl.FLOAT, false, 44, offset);
+      gl.vertexAttribDivisor(location, 1);
+    }
+    layer.data = null;
+  }
+  gl.bindVertexArray(vao);
+
+  // One tick box per factory layer, as on the 2D map.
+  for (const layer of factory) {
+    const label = document.createElement('label');
+    label.className = 'option';
+    label.innerHTML = `<input type="checkbox"> <span></span> <span class="count"></span>`;
+    label.querySelector('span').textContent = layer.title;
+    label.querySelector('.count').textContent = layer.count.toLocaleString('en-US');
+    const box = label.querySelector('input');
+    box.checked = layer.visible;
+    box.addEventListener('change', () => {
+      layer.visible = box.checked;
+      try { localStorage.setItem('smr:layers3d', JSON.stringify(Object.fromEntries(factory.map(f => [f.id, f.visible])))); } catch { /* storage unavailable */ }
+      needsDraw = true;
+    });
+    $('factory-layers').appendChild(label);
+  }
+  // With real boxes the footprints painted on the ground are not needed.
+  if (factory.length) { $('opt-factory').checked = false; $('opt-factory-row').hidden = true; }
+
   let mapTexture;
   try { mapTexture = texture(0, await loadImage('terrain/map-4k.jpg')); }
   catch { return fail('The map texture of the 3D view is missing. Render the map again.'); }
@@ -167,8 +284,8 @@
     loadImage('terrain/map-8k.jpg').then(img => { gl.deleteTexture(mapTexture); mapTexture = texture(0, img); needsDraw = true; }).catch(() => { /* the smaller one stays */ });
   }
 
-  // The factory: the 2D map's own tiles of the building layers, put together into one picture.
-  (async () => {
+  // Without box data (an older render): the 2D map's own tiles of the building layers, put together into one picture.
+  if (!factory.length) (async () => {
     const zoom = 4, size = 256 << zoom, sheet = document.createElement('canvas');
     sheet.width = sheet.height = size;
     const sc = sheet.getContext('2d');
@@ -278,6 +395,21 @@
     gl.uniform3fv(u('haze'), sky);
     gl.bindVertexArray(vao);
     gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_INT, 0);
+
+    if (factory.some(f => f.visible)) {
+      gl.useProgram(boxes);
+      const b = name => gl.getUniformLocation(boxes, name);
+      gl.uniformMatrix4fv(b('viewProjection'), false, matrix);
+      gl.uniform1f(b('exaggeration'), +$('exaggeration').value);
+      gl.uniform3fv(b('eye'), eye);
+      gl.uniform3fv(b('sun'), norm([-0.55, 0.62, -0.55]));
+      gl.uniform3fv(b('haze'), sky);
+      for (const layer of factory) {
+        if (!layer.visible) continue;
+        gl.bindVertexArray(layer.vao);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, layer.count);
+      }
+    }
     placeLabels();
   }
 
@@ -343,6 +475,7 @@
 
   $('exaggeration').addEventListener('input', () => { $('exaggeration-value').textContent = `${(+$('exaggeration').value).toFixed(1)}×`; needsDraw = true; });
   for (const id of ['opt-factory', 'opt-markers']) $(id).addEventListener('change', () => { needsDraw = true; });
+  window.addEventListener('keydown', e => { if (e.key === 'f' && !e.ctrlKey && !e.metaKey) reset(); });
   $('terrain-reset').addEventListener('click', reset);
 
   window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; } }; // for automated tests and the console
