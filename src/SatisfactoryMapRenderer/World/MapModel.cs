@@ -65,6 +65,10 @@ public sealed class MapFeature
     public string Class { get; init; } = "";
     public Vector3 Position { get; init; }
     public double Yaw { get; init; }
+
+    /// <summary>Full rotation and scale of a building, for placing its 3D model.</summary>
+    public Quaternion Rotation { get; init; } = Quaternion.Identity;
+    public Vector3 Scale { get; init; } = new(1, 1, 1);
     public double SizeX { get; init; }
     public double SizeY { get; init; }
 

@@ -19,7 +19,7 @@ public static class HtmlExporter
         string? logo = CopyLogo(outputDirectory, game);
         bool terrain = CopyTerrain(outputDirectory, game);
         if (terrain)
-            WriteFactory3D(world, outputDirectory);
+            WriteFactory3D(world, outputDirectory, game);
 
         using var stream = File.Create(Path.Combine(outputDirectory, "map-data.js"));
         stream.Write("window.MAP_DATA = "u8);
@@ -135,8 +135,15 @@ public static class HtmlExporter
     /// belts, pipes, rails and power lines as chains of points at their real height. Numbers are whole
     /// centimetres to keep the file small.
     /// </summary>
-    private static void WriteFactory3D(MapWorld world, string outputDirectory)
+    private static void WriteFactory3D(MapWorld world, string outputDirectory, GameAssets? game)
     {
+        // The 3D models of the building types this save uses; everything else stays a box.
+        var library = game?.Models;
+        var classes = new Dictionary<string, int>(StringComparer.Ordinal);
+        int Class(string name) => library is not null && library.Classes.ContainsKey(name)
+            ? classes.TryGetValue(name, out int i) ? i : classes[name] = classes.Count
+            : -1;
+
         var layers = new[] { Layers.Foundations, Layers.Buildings, Layers.Belts, Layers.Pipes, Layers.Railways, Layers.Power };
         var colors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int Color(string color) => colors.TryGetValue(color, out int i) ? i : colors[color] = colors.Count;
@@ -157,13 +164,20 @@ public static class HtmlExporter
                 w.WriteString("title", layer.Title);
                 w.WriteBoolean("visible", layer.VisibleByDefault);
 
-                // x, y, bottom, yaw (1/1000 rad), size x, size y, height, colour
+                // 16 numbers per building: position x y z, rotation quaternion x y z w (1/10000), scale x y z (1/1000),
+                // then for its box: size x, size y, height, bottom relative to z; colour; model class or -1
                 w.WriteStartArray("boxes");
                 foreach (var f in features.Where(f => f.Shape == Shape.Box))
                 {
                     var category = Enum.TryParse<BuildCategory>(f.Group, out var parsed) ? parsed : BuildCategory.Other;
                     var (height, baseOffset) = Catalog.HeightOf(f.Class, category);
-                    foreach (double v in new[] { f.Position.X, f.Position.Y, f.Position.Z + baseOffset, f.Yaw * 1000, f.SizeX, f.SizeY, height, Color(f.Color) })
+                    var r = f.Rotation;
+                    foreach (double v in new[]
+                             {
+                                 f.Position.X, f.Position.Y, f.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
+                                 f.Scale.X * 1000, f.Scale.Y * 1000, f.Scale.Z * 1000,
+                                 f.SizeX, f.SizeY, height, baseOffset, Color(f.Color), Class(f.Class),
+                             })
                         w.WriteNumberValue((long)Math.Round(v));
                 }
                 w.WriteEndArray();
@@ -190,9 +204,65 @@ public static class HtmlExporter
             foreach (var color in colors.OrderBy(c => c.Value).Select(c => c.Key))
                 w.WriteStringValue(color);
             w.WriteEndArray();
+
+            if (library is not null && classes.Count > 0)
+                WriteModels(w, library, classes, game!.ModelDataPath, Path.Combine(outputDirectory, "terrain", "models.bin"));
             w.WriteEndObject();
         }
         stream.Write(";\n"u8);
+    }
+
+    /// <summary>
+    /// Copies the meshes the save's buildings need out of the model library into terrain/models.bin and
+    /// describes them: per mesh where its data is, per class which meshes it consists of.
+    /// </summary>
+    private static void WriteModels(Utf8JsonWriter w, ModelLibrary library, Dictionary<string, int> classes, string libraryData, string target)
+    {
+        var meshes = new Dictionary<string, int>(StringComparer.Ordinal);
+        using var source = File.OpenRead(libraryData);
+        using var output = File.Create(target);
+
+        w.WriteStartArray("meshes");
+        foreach (var name in classes.Keys.SelectMany(c => library.Classes[c]).Select(p => p.Mesh).Distinct(StringComparer.Ordinal))
+        {
+            var mesh = library.Meshes[name];
+            meshes[name] = meshes.Count;
+            long vertexOffset = Copy(mesh.VertexOffset, mesh.V * 10L);
+            long indexOffset = Copy(mesh.IndexOffset, mesh.I * (mesh.Wide ? 4L : 2L));
+            // vertex count, index count, wide indices, vertex offset, index offset, bounds min x y z, bounds size x y z
+            w.WriteStartArray();
+            foreach (double v in new double[] { mesh.V, mesh.I, mesh.Wide ? 1 : 0, vertexOffset, indexOffset, mesh.Min[0], mesh.Min[1], mesh.Min[2], mesh.Size[0], mesh.Size[1], mesh.Size[2] })
+                w.WriteNumberValue(v);
+            w.WriteEndArray();
+        }
+        w.WriteEndArray();
+
+        // per class: parts as mesh, translation x y z, rotation x y z w, scale x y z
+        w.WriteStartArray("classes");
+        foreach (var name in classes.OrderBy(c => c.Value).Select(c => c.Key))
+        {
+            w.WriteStartArray();
+            foreach (var part in library.Classes[name])
+            {
+                w.WriteNumberValue(meshes[part.Mesh]);
+                foreach (double v in part.T.Concat(part.R).Concat(part.S))
+                    w.WriteNumberValue(v);
+            }
+            w.WriteEndArray();
+        }
+        w.WriteEndArray();
+
+        long Copy(long offset, long length)
+        {
+            while (output.Position % 4 != 0)
+                output.WriteByte(0);
+            long at = output.Position;
+            byte[] buffer = new byte[length];
+            source.Position = offset;
+            source.ReadExactly(buffer);
+            output.Write(buffer);
+            return at;
+        }
     }
 
     private const string GameLogoFile = "game-logo.png";

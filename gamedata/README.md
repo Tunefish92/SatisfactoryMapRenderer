@@ -1,7 +1,8 @@
 # Game data
 
 Icons, item and building names, level data (resource nodes, collectibles, spawners), the game's logo, the
-in-game map, the world's height data and a relief map made from both, exported from **Satisfactory 1.2.4** (build 502094) with
+in-game map, the world's height data, a relief map made from both and simplified 3D models of the buildables,
+exported from **Satisfactory 1.2.4** (build 502094) with
 
 ```
 dotnet run --project src/SatisfactoryMapRenderer -c Release -- --export-game-data --game <Satisfactory folder>

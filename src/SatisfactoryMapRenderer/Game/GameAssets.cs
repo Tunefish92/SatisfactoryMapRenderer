@@ -74,6 +74,11 @@ public sealed class GameAssets : IDisposable
         ? Path.Combine(CacheDirectory, HeightsFileName) : null;
     public string TerrainInfoPath => Path.Combine(CacheDirectory, TerrainInfoFileName);
     private const string HeightsFileName = "heights.png";
+
+    /// <summary>3D models of the buildables for the 3D view; null without game data that has them.</summary>
+    public ModelLibrary? Models => _models ??= ModelLibrary.TryLoad(CacheDirectory);
+    public string ModelDataPath => Path.Combine(CacheDirectory, ModelLibrary.DataFile);
+    private ModelLibrary? _models;
     private const string TerrainInfoFileName = "terrain.json";
     private const string HeightData = "/Game/FactoryGame/Interface/UI/Assets/MapTest/HeightData_Test.HeightData_Test";
     public string? MapImagePath => Data.MapImage is { } name && File.Exists(Path.Combine(CacheDirectory, name)) ? Path.Combine(CacheDirectory, name) : null;
@@ -101,6 +106,7 @@ public sealed class GameAssets : IDisposable
         if (game.TryReadIcon() is { } logo)
             File.WriteAllBytes(Path.Combine(assets.CacheDirectory, LogoFileName), logo);
         assets.CreateRelief();
+        assets.CreateModels();
         assets.Data.Save(dataFile);
         return assets;
     }
@@ -139,6 +145,13 @@ public sealed class GameAssets : IDisposable
             CreateRelief();
         if (ReliefImagePath is { } relief)
             File.Copy(relief, Path.Combine(directory, ReliefFileName), overwrite: true);
+        if (Models is null && _game is not null)
+            CreateModels();
+        if (Models is not null)
+        {
+            File.Copy(ModelDataPath, Path.Combine(directory, ModelLibrary.DataFile), overwrite: true);
+            File.Copy(Path.Combine(CacheDirectory, ModelLibrary.IndexFile), Path.Combine(directory, ModelLibrary.IndexFile), overwrite: true);
+        }
         if (TerrainHeightsPath is { } heights)
         {
             File.Copy(heights, Path.Combine(directory, HeightsFileName), overwrite: true);
@@ -182,6 +195,19 @@ public sealed class GameAssets : IDisposable
         ExtractMapIcons(archive);
         _log($"  Icons: {Directory.GetFiles(IconDirectory, "*.png").Length} ({sw.Elapsed.TotalSeconds:0.0}s)");
         return data;
+    }
+
+    private void CreateModels()
+    {
+        try
+        {
+            _models = GameModels.Extract(Archive, CacheDirectory, _log);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The models are an extra; without them the 3D view shows boxes.
+            _log($"  3D models: not read ({ex.Message})");
+        }
     }
 
     /// <summary>

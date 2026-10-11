@@ -17,9 +17,9 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 ## What you get
 
 * **Two base maps**: the in-game map and a relief map with shaded terrain.
-* **3D view**: the whole world as a 3D landscape you can rotate and zoom, with your factory standing on it as
-  coloured blocks (buildings, foundations and walls, belts, pipes, rails, power lines at their real heights) and
-  labels for players, landmarks and stations.
+* **3D view**: the whole world as a 3D landscape you can rotate and zoom, with your factory standing on it in
+  the game's own shapes: machines, foundations, walls, ramps, stations. Belts, pipes, rails and power lines run
+  at their real heights, and players, landmarks and stations are labelled.
 * **The whole factory**: foundations and walls, buildings (with their game icons when zoomed in), conveyor belts by
   tier, pipes and hypertubes, railways and the power grid.
 * **Everything else on the map**: players with their names, vehicles and trains, creatures and their spawners,
@@ -176,10 +176,11 @@ The image works **out of the box**: it brings the game's icons, item and buildin
 in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
 The **3D** button under the zoom buttons opens the 3D view: the game's height data as a landscape with the map
-on it, and the factory as blocks in the colours of the 2D map. Building heights are estimates per building type;
-positions, rotations and the heights of belts, pipes and rails are the real ones. Drag to rotate, right-drag or
-Shift+drag to move, wheel to zoom; a slider exaggerates the heights and each factory layer can be switched off.
-It needs a browser with WebGL 2.
+on it, and the factory in the game's own 3D models, placed with the positions and rotations from the save. The
+models are shown without textures, in a light tone with a hint of the 2D map's colours. Belts, pipes, rails and
+wires are simple strips at their real heights, and the few building types without a model are boxes. Drag to
+rotate, right-drag or Shift+drag to move, wheel to zoom; a slider exaggerates the heights and each factory
+layer can be switched off. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
 
 The *Map* dropdown on the Layers tab switches between the **game map** and a **relief map**: the same map with the
 terrain shaded from the game's own height data, so mountains, cliffs, canyons and craters stand out.

@@ -163,15 +163,68 @@
   const F = window.MAP_3D;
   const factory = [];
   const centreX = W.minX + W.size / 2, centreY = W.minY + W.size / 2;
+  // The buildings' real shapes, where the game data has them: meshes in terrain/models.bin, described in F.meshes
+  // and F.classes. Without them (or when the file cannot be fetched) every building is a box.
+  let modelData = null;
+  if (F && F.meshes && F.classes) {
+    try {
+      const response = await fetch('terrain/models.bin');
+      if (response.ok) modelData = await response.arrayBuffer();
+    } catch { /* opened from disk: boxes */ }
+  }
+
+  /** 3×4 matrix (rows) of a transform: scale, then rotate by the quaternion, then translate. In game coordinates. */
+  function transform(tx, ty, tz, qx, qy, qz, qw, sx, sy, sz) {
+    const xx = qx * qx, yy = qy * qy, zz = qz * qz, xy = qx * qy, xz = qx * qz, yz = qy * qz, wx = qw * qx, wy = qw * qy, wz = qw * qz;
+    return [
+      (1 - 2 * (yy + zz)) * sx, 2 * (xy - wz) * sy, 2 * (xz + wy) * sz, tx,
+      2 * (xy + wz) * sx, (1 - 2 * (xx + zz)) * sy, 2 * (yz - wx) * sz, ty,
+      2 * (xz - wy) * sx, 2 * (yz + wx) * sy, (1 - 2 * (xx + yy)) * sz, tz,
+    ];
+  }
+  /** a · b for 3×4 matrices: b is applied first. */
+  function combine(a, b) {
+    const o = new Array(12);
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 4; c++) o[r * 4 + c] = a[r * 4] * b[c] + a[r * 4 + 1] * b[4 + c] + a[r * 4 + 2] * b[8 + c] + (c === 3 ? a[r * 4 + 3] : 0);
+    }
+    return o;
+  }
+  const partMatrices = modelData ? F.classes.map(parts => {
+    const list = [];
+    for (let i = 0; i + 10 < parts.length; i += 11) list.push({ mesh: parts[i], matrix: transform(...parts.slice(i + 1, i + 11)) });
+    return list;
+  }) : [];
+
+  const meshInstances = []; // { layer, mesh, data: number[] } – 15 numbers per instance: matrix rows, colour
+  let modelCount = 0, triangleCount = 0;
   if (F && F.layers) {
     const rgb = F.colors.map(c => { const n = parseInt(c.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; });
     const remembered = (() => { try { return JSON.parse(localStorage.getItem('smr:layers3d')) || {}; } catch { return {}; } })();
     for (const layer of F.layers) {
       const out = [];
+      const perMesh = new Map();
       const add = (cx, cy, cz, hx, hy, hz, yaw, pitch, color) => out.push(cx, cy, cz, hx, hy, hz, yaw, pitch, color[0], color[1], color[2]);
       const b = layer.boxes;
-      for (let i = 0; i + 7 < b.length; i += 8) {
-        add(b[i] - centreX, b[i + 2] + b[i + 6] / 2, b[i + 1] - centreY, b[i + 4] / 2, b[i + 6] / 2, b[i + 5] / 2, b[i + 3] / 1000, 0, rgb[b[i + 7]]);
+      for (let i = 0; i + 15 < b.length; i += 16) {
+        const color = rgb[b[i + 14]], parts = partMatrices[b[i + 15]];
+        const qx = b[i + 3] / 10000, qy = b[i + 4] / 10000, qz = b[i + 5] / 10000, qw = b[i + 6] / 10000;
+        if (parts && parts.length) {
+          // the real model: every part of the building, placed with the building's own position and rotation
+          const building = transform(b[i] - centreX, b[i + 1] - centreY, b[i + 2], qx, qy, qz, qw, b[i + 7] / 1000, b[i + 8] / 1000, b[i + 9] / 1000);
+          // shapes read better in a light tone with a hint of the map's colour than fully coloured
+          const tint = [0.5 + color[0] * 0.38, 0.5 + color[1] * 0.38, 0.5 + color[2] * 0.38];
+          for (const part of parts) {
+            let list = perMesh.get(part.mesh);
+            if (!list) perMesh.set(part.mesh, list = []);
+            list.push(...combine(building, part.matrix), tint[0], tint[1], tint[2]);
+            triangleCount += F.meshes[part.mesh][1] / 3;
+          }
+          modelCount++;
+        } else {
+          const yaw = Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz));
+          add(b[i] - centreX, b[i + 2] + b[i + 13] + b[i + 12] / 2, b[i + 1] - centreY, b[i + 10] / 2, b[i + 12] / 2, b[i + 11] / 2, yaw, 0, color);
+        }
       }
       const l = layer.lines;
       for (let i = 0; i + 2 < l.length;) {
@@ -189,7 +242,9 @@
         }
         i += count * 3;
       }
-      if (out.length) factory.push({ id: layer.id, title: layer.title, visible: remembered[layer.id] ?? layer.visible, data: new Float32Array(out), count: out.length / 11 });
+      const entry = { id: layer.id, title: layer.title, visible: remembered[layer.id] ?? layer.visible, data: new Float32Array(out), count: out.length / 11, pieces: layer.boxes.length / 16 };
+      if (out.length || perMesh.size) factory.push(entry);
+      for (const [mesh, data] of perMesh) meshInstances.push({ layer: entry, mesh, data: new Float32Array(data), count: data.length / 15 });
     }
   }
 
@@ -238,6 +293,7 @@
   gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(cube), gl.STATIC_DRAW);
   for (const layer of factory) {
+    if (!layer.count) continue;
     layer.vao = gl.createVertexArray();
     gl.bindVertexArray(layer.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuffer);
@@ -252,6 +308,66 @@
     }
     layer.data = null;
   }
+  // The real models: one vertex and index buffer per mesh, one instance buffer per layer and mesh.
+  const models = program(`#version 300 es
+    layout(location = 0) in vec3 position;  // 16 bit, to be scaled into the mesh's bounds
+    layout(location = 1) in vec3 normal;
+    layout(location = 2) in vec4 row0;      // the instance's 3×4 matrix, in game coordinates (x east, y south, z up)
+    layout(location = 3) in vec4 row1;
+    layout(location = 4) in vec4 row2;
+    layout(location = 5) in vec3 tint;
+    uniform mat4 viewProjection;
+    uniform vec3 boundsMin, boundsSize;
+    uniform float exaggeration;
+    out vec3 vNormal, vWorld, vTint;
+    void main() {
+      vec4 local = vec4(boundsMin + (position + 32768.0) / 65535.0 * boundsSize, 1.0);
+      vec3 p = vec3(dot(row0, local), dot(row1, local), dot(row2, local));
+      vWorld = vec3(p.x, p.z * exaggeration, p.y);
+      vec3 n = vec3(dot(row0.xyz, normal), dot(row1.xyz, normal), dot(row2.xyz, normal));
+      vNormal = vec3(n.x, n.z, n.y);
+      vTint = tint;
+      gl_Position = viewProjection * vec4(vWorld, 1.0);
+    }`, `#version 300 es
+    precision highp float;
+    in vec3 vNormal, vWorld, vTint;
+    uniform vec3 eye, sun, haze;
+    out vec4 color;
+    void main() {
+      vec3 n = normalize(vNormal);
+      float light = 0.42 + 0.62 * max(dot(n, sun), 0.0) + 0.16 * n.y;
+      float fog = smoothstep(0.55, 1.6, distance(vWorld, eye) / 900000.0);
+      color = vec4(mix(vTint * light, haze, fog * 0.55), 1.0);
+    }`);
+  const meshBuffers = new Map();
+  for (const item of meshInstances) {
+    const [vertexCount, indexCount, wide, vertexOffset, indexOffset, minX, minY, minZ, sizeX, sizeY, sizeZ] = F.meshes[item.mesh];
+    let shared = meshBuffers.get(item.mesh);
+    if (!shared) {
+      shared = { vertices: gl.createBuffer(), indices: gl.createBuffer() };
+      gl.bindVertexArray(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, shared.vertices);
+      gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(modelData, vertexOffset, vertexCount * 10), gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shared.indices);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array(modelData, indexOffset, indexCount * (wide ? 4 : 2)), gl.STATIC_DRAW);
+      meshBuffers.set(item.mesh, shared);
+    }
+    item.vao = gl.createVertexArray();
+    gl.bindVertexArray(item.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, shared.vertices);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.SHORT, false, 10, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.BYTE, true, 10, 6);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shared.indices);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, item.data, gl.STATIC_DRAW);
+    for (const [location, size, offset] of [[2, 4, 0], [3, 4, 16], [4, 4, 32], [5, 3, 48]]) {
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, size, gl.FLOAT, false, 60, offset);
+      gl.vertexAttribDivisor(location, 1);
+    }
+    Object.assign(item, { indexCount, indexType: wide ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, min: [minX, minY, minZ], size: [sizeX, sizeY, sizeZ], data: null });
+  }
+  modelData = null;
   gl.bindVertexArray(vao);
 
   // One tick box per factory layer, as on the 2D map.
@@ -260,7 +376,7 @@
     label.className = 'option';
     label.innerHTML = `<input type="checkbox"> <span></span> <span class="count"></span>`;
     label.querySelector('span').textContent = layer.title;
-    label.querySelector('.count').textContent = layer.count.toLocaleString('en-US');
+    label.querySelector('.count').textContent = (layer.pieces || layer.count).toLocaleString('en-US');
     const box = label.querySelector('input');
     box.checked = layer.visible;
     box.addEventListener('change', () => {
@@ -405,9 +521,27 @@
       gl.uniform3fv(b('sun'), norm([-0.55, 0.62, -0.55]));
       gl.uniform3fv(b('haze'), sky);
       for (const layer of factory) {
-        if (!layer.visible) continue;
+        if (!layer.visible || !layer.count) continue;
         gl.bindVertexArray(layer.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, layer.count);
+      }
+
+      if (meshInstances.length) {
+        gl.useProgram(models);
+        const m = name => gl.getUniformLocation(models, name);
+        gl.uniformMatrix4fv(m('viewProjection'), false, matrix);
+        gl.uniform1f(m('exaggeration'), +$('exaggeration').value);
+        gl.uniform3fv(m('eye'), eye);
+        gl.uniform3fv(m('sun'), norm([-0.55, 0.62, -0.55]));
+        gl.uniform3fv(m('haze'), sky);
+        const boundsMin = m('boundsMin'), boundsSize = m('boundsSize');
+        for (const item of meshInstances) {
+          if (!item.layer.visible) continue;
+          gl.uniform3fv(boundsMin, item.min);
+          gl.uniform3fv(boundsSize, item.size);
+          gl.bindVertexArray(item.vao);
+          gl.drawElementsInstanced(gl.TRIANGLES, item.indexCount, item.indexType, 0, item.count);
+        }
       }
     }
     placeLabels();
@@ -478,7 +612,7 @@
   window.addEventListener('keydown', e => { if (e.key === 'f' && !e.ctrlKey && !e.metaKey) reset(); });
   $('terrain-reset').addEventListener('click', reset);
 
-  window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; } }; // for automated tests and the console
+  window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; }, models: modelCount, triangles: Math.round(triangleCount) }; // for automated tests and the console
   status('');
   requestAnimationFrame(frame);
 })().catch(e => {
