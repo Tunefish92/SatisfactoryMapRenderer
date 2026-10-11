@@ -40,6 +40,10 @@
       </div>
 
       <div class="tab-panel" data-panel="save" role="tabpanel" hidden>
+        <div id="admin-session" class="admin-session" hidden>
+          <span class="admin-badge"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Signed in as admin</span>
+          <button type="button" id="admin-logout" class="logout"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg>Log out</button>
+        </div>
         <section id="source" class="card" hidden>
           <h2>Source</h2>
           <div id="source-current" class="source-current"></div>
@@ -89,8 +93,7 @@
             </details>
 
             <button type="button" id="source-refresh" class="primary wide" hidden>⟳ Refresh snapshot</button>
-            <button type="button" id="admin-logout" class="link" hidden>Log out</button>
-          </div>
+            </div>
         </section>
 
         <section class="card" id="save-details">
@@ -98,14 +101,24 @@
           <table id="summary"></table>
         </section>
 
-        <div id="admin" hidden>
-          <button type="button" id="admin-open" class="link">Admin login</button>
-          <form id="admin-form" class="source-form" hidden>
-            <label>Admin password<input id="admin-password" type="password" required autocomplete="current-password"></label>
-            <div class="button-row"><button type="submit" class="primary">Log in</button></div>
+        <section id="admin" class="card admin-card" hidden>
+          <div class="admin-head">
+            <span class="admin-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+            <div>
+              <h2>Admin</h2>
+              <p>Log in to choose or refresh the save game.</p>
+            </div>
+          </div>
+          <form id="admin-form" class="source-form">
+            <label for="admin-password">Password</label>
+            <div class="password-field">
+              <input id="admin-password" type="password" required autocomplete="current-password" placeholder="Admin password">
+              <button type="button" id="admin-reveal" title="Show password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            </div>
+            <button type="submit" id="admin-submit" class="primary wide">Log in</button>
             <div id="admin-error" class="source-status" data-kind="error" role="alert" hidden></div>
           </form>
-        </div>
+        </section>
       </div>
 
       <div class="tab-panel" data-panel="stats" role="tabpanel" hidden>

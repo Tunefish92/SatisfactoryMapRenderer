@@ -2,7 +2,7 @@
 (async () => {
   'use strict';
 
-  // The panel is for admins. Visitors of a served map do not see it, only an "Admin login" link at the bottom.
+  // The panel is for admins. Visitors of a served map do not see it, only the admin login in the Save game tab.
   const $ = id => document.getElementById(id);
   const current = $('source-current'), status = $('source-status'), controls = $('source-controls');
   const data = window.MAP_DATA || {};
@@ -50,18 +50,31 @@
   if (!source.admin) {
     placeholder('No save game has been loaded so far. An admin can choose one after logging in from the side panel.', false);
     $('admin').hidden = false;
-    $('admin-open').addEventListener('click', () => {
-      $('admin-form').hidden = !$('admin-form').hidden;
-      if (!$('admin-form').hidden) $('admin-password').focus();
+    $('admin-reveal').addEventListener('click', () => {
+      const show = $('admin-password').type === 'password';
+      $('admin-password').type = show ? 'text' : 'password';
+      $('admin-reveal').setAttribute('aria-pressed', show);
+      $('admin-reveal').title = show ? 'Hide password' : 'Show password';
+      $('admin-reveal').setAttribute('aria-label', $('admin-reveal').title);
+      $('admin-password').focus();
     });
     $('admin-form').addEventListener('submit', async e => {
       e.preventDefault();
+      const button = $('admin-submit');
+      button.disabled = true;
+      button.textContent = 'Logging in…';
+      $('admin-error').hidden = true;
       try {
         await postJson('/api/login', { password: $('admin-password').value });
         location.reload();
       } catch (err) {
+        button.disabled = false;
+        button.textContent = 'Log in';
         $('admin-error').hidden = false;
         $('admin-error').textContent = err.message;
+        $('admin').classList.remove('shake');
+        void $('admin').offsetWidth; // restart the animation
+        $('admin').classList.add('shake');
         $('admin-password').select();
       }
     });
@@ -71,8 +84,12 @@
   $('source').hidden = false;
   controls.hidden = false;
   if (source.loginRequired) {
-    $('admin-logout').hidden = false;
-    $('admin-logout').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }).catch(() => {}); location.reload(); });
+    $('admin-session').hidden = false;
+    $('admin-logout').addEventListener('click', async () => {
+      $('admin-logout').disabled = true;
+      await api('/api/logout', { method: 'POST' }).catch(() => {});
+      location.reload();
+    });
   }
 
   const KIND = { file: 'File', server: 'Dedicated server', ssh: 'SSH' };

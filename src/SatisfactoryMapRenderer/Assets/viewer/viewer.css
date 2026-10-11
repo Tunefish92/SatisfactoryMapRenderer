@@ -477,19 +477,70 @@ button.wide { width: 100%; margin-top: 12px; padding: 8px 14px !important; }
 .source-status[data-kind=ok] { background: #dcfce7; color: #166534; }
 
 /* ---- Admin */
-#admin { margin-top: 18px; }
-#admin .source-form { margin-top: 8px; }
-button.link {
+.admin-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.admin-head h2 { margin: 0 0 2px; }
+.admin-head p { margin: 0; color: var(--color-text-muted); font-size: 12.5px; }
+.admin-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.admin-card > form > label { font-size: 12px; color: var(--color-text-muted); margin-bottom: -4px; }
+.password-field { position: relative; }
+.password-field input { padding-right: 38px !important; }
+.password-field button {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
   padding: 0 !important;
+  transform: translateY(-50%);
   border: none;
+  border-radius: var(--r-sm);
   background: none;
   color: var(--color-text-muted);
-  font: inherit;
-  font-size: 12px !important;
-  text-decoration: underline;
 }
-button.link:hover { transform: none; box-shadow: none; color: var(--color-primary); }
-#admin-logout { margin-top: 10px; }
+.password-field button:hover { transform: translateY(-50%); box-shadow: none; color: var(--color-primary); background: var(--color-primary-soft); }
+.password-field button[aria-pressed=true] { color: var(--color-primary); }
+.admin-card button.wide { margin-top: 4px; }
+button:disabled { opacity: .6; cursor: default; transform: none !important; }
+.admin-card.shake { animation: admin-shake .35s var(--ease); }
+@keyframes admin-shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+
+/* Signed-in bar above the save game source */
+.admin-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--r-full);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-sm);
+}
+.admin-badge { display: inline-flex; align-items: center; gap: 7px; font: 600 12.5px var(--font-heading); color: #166534; }
+:root[data-theme="dark"] .admin-badge { color: #86efac; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .admin-badge { color: #86efac; } }
+button.logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 10px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+button.logout svg { width: 15px; height: 15px; }
+button.logout:hover { border-color: #dc2626; color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+@media (prefers-reduced-motion: reduce) { .admin-card.shake { animation: none; } }
 
 #sidebar header .logo { flex: none; display: block; filter: drop-shadow(0 4px 10px rgba(37, 99, 235, 0.45)); }
 
@@ -843,3 +894,9 @@ body.collapsed #statusbar { max-width: min(420px, calc(100vw - 80px)); }
 #about .button-row { margin-top: 12px; }
 #about button { padding: 6px 14px; font-size: 12.5px; }
 @media (prefers-reduced-motion: reduce) { .update-dot { animation: none; } }
+
+/* Error boxes in the dark theme: dark red instead of the light theme's pink */
+:root[data-theme="dark"] .source-status[data-kind=error], :root[data-theme="dark"] .load-error { background: #3a1414; color: #fca5a5; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .source-status[data-kind=error], :root:not([data-theme="light"]) .load-error { background: #3a1414; color: #fca5a5; }
+}
