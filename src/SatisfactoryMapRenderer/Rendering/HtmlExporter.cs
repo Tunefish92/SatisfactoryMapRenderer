@@ -239,6 +239,30 @@ public static class HtmlExporter
                 w.WriteEndArray();
                 w.WriteEndObject();
             }
+            var players = world.In(Layers.Players).ToList();
+            if (library is not null && library.Classes.ContainsKey(GameModels.PlayerClass) && players.Count > 0)
+            {
+                // The pioneers, standing where they were when the game was saved.
+                w.WriteStartObject();
+                w.WriteString("id", "players");
+                w.WriteString("title", "Players");
+                w.WriteBoolean("visible", true);
+                w.WriteStartArray("boxes");
+                foreach (var f in players)
+                {
+                    var r = f.Rotation;
+                    foreach (double v in new[]
+                             {
+                                 f.Position.X, f.Position.Y, f.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
+                                 1000, 1000, 1000, 80, 80, 190, -95, Color("#ff4d4d"), Class(GameModels.PlayerClass),
+                             })
+                        w.WriteNumberValue((long)Math.Round(v));
+                }
+                w.WriteEndArray();
+                w.WriteStartArray("lines");
+                w.WriteEndArray();
+                w.WriteEndObject();
+            }
             if (library is { Resources.Count: > 0 })
             {
                 // The rocks of the resource nodes are part of the world, the same in every save.
@@ -314,16 +338,20 @@ public static class HtmlExporter
         }
         w.WriteEndArray();
 
-        // per material: kind, then the texture's file name or the colour
+        // per material: kind, then the texture's file name or the colour, then the paint mask's file name if it has one
         w.WriteStartArray("materials");
         foreach (var material in materials.OrderBy(m => m.Value).Select(m => library.Materials[m.Key]))
         {
             w.WriteStartArray();
             w.WriteStringValue(material.Kind);
             w.WriteStringValue(material.Texture ?? material.Color ?? "");
+            if (material.Mask is not null)
+                w.WriteStringValue(material.Mask);
             w.WriteEndArray();
             if (material.Texture is not null)
                 CopyTexture(material.Texture);
+            if (material.Mask is not null)
+                CopyTexture(material.Mask);
         }
         w.WriteEndArray();
 

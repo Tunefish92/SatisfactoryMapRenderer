@@ -996,6 +996,9 @@ body.terrain-page { overflow: hidden; }
 #terrain-status { position: fixed; left: 50%; bottom: 20px; z-index: 10; transform: translateX(-50%); box-shadow: var(--shadow-md); }
 
 /* Button on the 2D map that opens the 3D view */
+/* the 3D button stands beside the zoom buttons, not below them */
+.leaflet-top.leaflet-left { display: flex; align-items: flex-start; }
+.leaflet-top.leaflet-left .leaflet-control { float: none; clear: none; }
 .leaflet-container a.view-3d {
   display: inline-flex;
   align-items: center;

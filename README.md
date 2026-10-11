@@ -19,8 +19,9 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 * **Three base maps**: a ground map (the world from above without any factory, made from the game's ground
   textures, water and heights), the in-game map, and a relief map with shaded terrain.
 * **3D view**: the whole world as a 3D landscape you can rotate and zoom, with your factory standing on it in
-  the game's own shapes and textures: machines, foundations, walls, ramps, stations. Belts, pipes, rails and power lines run
-  at their real heights, and players, landmarks and stations are labelled.
+  the game's own models and textures: machines, foundations, walls, belts, lifts, pipes and tracks. The ground
+  shows the game's own ground textures and water, resource nodes and players stand where they are, and a click
+  on a building or resource node shows its details.
 * **The whole factory**: foundations and walls, buildings (with their game icons when zoomed in), conveyor belts by
   tier, pipes and hypertubes, railways and the power grid.
 * **Everything else on the map**: players with their names, vehicles and trains, creatures and their spawners,
@@ -40,6 +41,12 @@ Reads saves from Update 5 up to 1.2.4.
 | Zoomed in: buildings with their icons, belts, click for details | Dark theme, statistics |
 |---|---|
 | ![A factory zoomed in, with the details of a smelter](docs/screenshots/factory.jpg) | ![Dark theme with the object counts](docs/screenshots/statistics-dark.jpg) |
+
+| 3D view: the world with the game's ground and water | 3D view: the factory in the game's own models |
+|---|---|
+| ![The whole world as a 3D landscape](docs/screenshots/3d-world.jpg) | ![A factory in 3D with machines, belts and foundations](docs/screenshots/3d-factory.jpg) |
+
+![Water extractors and pipes in the 3D view](docs/screenshots/3d-water.jpg)
 
 ## Installation
 
@@ -176,21 +183,24 @@ are stored in the data folder (`cache/source.json`), readable by the app's user 
 The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
 in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
 
-The **3D view** button under the zoom buttons opens the 3D view: the game's height data as a landscape, and
-the factory in the game's own 3D models, placed with the positions and rotations from the save. The
-ground shows the game's own ground textures where the game's landscape has them painted, with the sea, lakes
-and rivers as water; untick **Realistic ground** to see the in-game map on the terrain instead. Steep faces get
-the game's cliff texture, because the game's rocks are separate objects that the ground data does not cover. The
-models carry the game's textures, the machines in the standard FICSIT orange (custom paint from the save is not shown). Conveyor
-belts, pipes, hypertubes and railway tracks are the game's own pieces laid along their paths (pipes in the
-standard orange), and conveyor lifts are built from the game's end and middle pieces; wires are simple strips
-at their real heights, and the few building types without a
-model are boxes. The rocks, crystals and
-vents of the world's resource nodes stand where the game has them, with their textures. Click a
-building or a resource node to see what the 2D map shows about it (recipe, power, contents; resource, purity,
-whether it is in use). Drag to
-rotate, drag with the wheel button or Shift+drag to move, wheel to zoom towards the mouse; each factory layer can be switched off. Heights are
-the real ones, not exaggerated. It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
+The **3D view** button beside the zoom buttons opens the 3D view: the game's height data as a landscape, and
+the factory in the game's own 3D models, placed with the positions and rotations from the save.
+
+* **Ground**: the game's own ground textures where the game's landscape has them painted, with the sea, lakes and
+  rivers as water. Steep faces get the game's cliff texture, because the game's rocks are separate objects that
+  the ground data does not cover. Untick **Realistic ground** to see the in-game map on the terrain instead.
+* **Factory**: the models carry the game's textures and the standard paint colours (custom paint from the save
+  is not shown). Conveyor belts, pipes, hypertubes and railway tracks are the game's own pieces laid along their
+  paths, conveyor lifts are built from their end and middle pieces. Wires are simple strips at their real
+  heights, and the few building types without a model are boxes.
+* **World**: the rocks, crystals and vents of the resource nodes stand where the game has them, and the players
+  where they were when the game was saved.
+* **Details**: click a building or a resource node to see what the 2D map shows about it (recipe, power,
+  contents; resource, purity, whether it is in use).
+* **Moving around**: drag to rotate, drag with the wheel button or Shift+drag to move, wheel to zoom towards the
+  mouse; each layer can be switched off. Heights are the real ones, not exaggerated.
+
+It needs a browser with WebGL 2 and, for a large factory, a dedicated graphics card.
 
 The *Map* dropdown on the Layers tab switches between the **game map** and a **relief map**: the same map with the
 terrain shaded from the game's own height data, so mountains, cliffs, canyons and craters stand out.

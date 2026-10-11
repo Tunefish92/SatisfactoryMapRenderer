@@ -1,37 +1,37 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 – 2026-10-11
 
-* 3D view: the world as a landscape built from the game's height data, with the in-game map on it and the
-  factory in the game's own 3D models and textures (548 building types), belts, pipes and rails at their real
-  heights, and labels for players, landmarks and stations. Opened with the 3D button on the map.
-* 3D view, realistic ground: the terrain carries the game's own ground textures (sand, grass, forest, gravel,
-  cliff, …), placed with the game's landscape data, and the sea, lakes and rivers from the game's water
-  surfaces. "Realistic ground" in the 3D view switches back to the in-game map.
-* 3D view: conveyor belts, pipes, hypertubes and railway tracks in the game's own models and textures, laid
-  along their paths piece by piece as in the game.
+### 3D view
+
+* New: the whole world as a 3D landscape, opened with the **3D view** button beside the zoom buttons. The
+  terrain is built from the game's height data, calibrated with the game's landscape.
+* Realistic ground: the terrain carries the game's own ground textures (sand, grass, forest, gravel, cliff, …)
+  where the game's landscape has them painted, and the sea, lakes and rivers from the game's water surfaces.
+  "Realistic ground" switches back to the in-game map.
+* The factory in the game's own models and textures: about 590 building types, with the standard paint
+  colours. Conveyor belts, pipes, hypertubes and railway tracks are laid along their paths piece by piece,
+  conveyor lifts are built from their end and middle pieces, and machines show their arms and other moving
+  parts in the pose they rest in.
+* The resource nodes of the world (ore rocks, coal, quartz, SAM, sulfur, limestone, fracking vents) and the
+  players as models.
+* Click a building or a resource node for the same details as on the 2D map.
+* Drag to rotate, wheel-button drag or Shift+drag to move, wheel to zoom towards the mouse. Every layer can be
+  switched off.
+
+### Maps
+
 * Ground map: a new base map of the 2D view and its default, the world from above without any factory, made
-  from the game's ground textures, water surfaces and heights. Bundled at 8192 px; `--render-ground-map`
-  draws it at any size, and `maps/ground-map.jpg` replaces the bundled one.
-* 3D view: resource nodes are clickable and show resource, purity and whether they are in use.
-* The 3D button on the map is a labelled button in the accent colour.
+  from the game's ground textures, water surfaces and heights. Bundled at 8192 px; `--render-ground-map` draws
+  it at any size, and `maps/ground-map.jpg` replaces the bundled one.
+* Relief map: a further base map, the in-game map with the terrain shaded from the game's height data.
 * Removed: the "Realistic map" base map and the `--realistic` option; the ground map takes its place.
-* 3D view: the resource nodes of the world (ore rocks, coal, quartz, SAM, sulfur, limestone, fracking vents) in
-  the game's own models and textures, as a layer of their own. The game's virtual textures can now be read,
-  which these use.
-* 3D view: water no longer shows under rocks and plateaus that cover it.
-* 3D view: conveyor lifts in the game's own pieces; arms and other animated parts of machines (quantum
-  encoder, space elevator); buildings made from another building show its parts too (power tower with
-  platform); pipeline pumps Mk.2 are found despite the game's two spellings of their name.
-* 3D view: buildings are clickable and show the same details as on the 2D map.
-* 3D view: models that were incomplete are whole (water extractor with its moving part and paint; no more
-  stand-in levels of detail), and the space elevator's shaft and platform stand at their real height.
-* 3D view: terrain heights calibrated with the game's landscape (they were up to 5 m too low on high ground);
-  the wheel zooms towards the mouse, the wheel button moves the view, the right button turns it.
-* Relief map: a second base map, the in-game map with the terrain shaded from the game's height data. It is
-  made during the game data export and chosen in the *Map* dropdown.
+
+### Other
+
 * Nicer admin login and logout: a login card with show/hide for the password and a signed-in bar with a
   Log out button.
+* The bundled game data grew to about 130 MB (models, textures, ground data), and the Docker image with it.
 
 ## 0.1.0 – 2026-10-10
 

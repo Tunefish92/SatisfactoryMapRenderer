@@ -647,7 +647,7 @@ public sealed class WorldExtractor
             details.Add(new("Health", hp.ToString("0", Inv)));
         if (e.Properties.GetReference("mInventory") is { } inv && _objects.TryGetValue(inv.PathName, out var inventory))
             details.Add(new("Inventory stacks", InventoryItems(inventory).Count().ToString(Inv)));
-        AddMarker(Layers.Players, name, e.Transform.Translation, "#ff4d4d", "Player", details: details, icon: _game?.MapIcon("player"));
+        AddMarker(Layers.Players, name, e.Transform.Translation, "#ff4d4d", "Player", details: details, icon: _game?.MapIcon("player"), rotation: e.Transform.Rotation);
     }
 
     private void AddVehicle(SaveEntity e)
@@ -911,7 +911,8 @@ public sealed class WorldExtractor
     }
 
     private void AddMarker(LayerDef layer, string name, Vector3 position, string color, string group,
-        List<KeyValuePair<string, string>>? details = null, bool dimmed = false, string? icon = null, string? ring = null, bool badge = false)
+        List<KeyValuePair<string, string>>? details = null, bool dimmed = false, string? icon = null, string? ring = null, bool badge = false,
+        Quaternion? rotation = null)
     {
         _world.Features.Add(new MapFeature
         {
@@ -919,6 +920,7 @@ public sealed class WorldExtractor
             Shape = Shape.Point,
             Name = name,
             Position = position,
+            Rotation = rotation ?? Quaternion.Identity,
             Color = color,
             Group = group,
             Dimmed = dimmed,

@@ -6,7 +6,12 @@ The whole factory on a zoomable map: foundations, buildings, belts, pipes, railw
 players, vehicles, resource nodes with purity, collectibles and more, with search and
 click-to-inspect. One container renders the map and serves it.
 
+New in 0.2: a **3D view** of the world with your factory in the game's own models and textures, and a
+**ground map** of the world made from the game's ground textures and water.
+
 ![The whole map with resource nodes, the factory and map markers](https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/overview.jpg)
+
+![A factory in the 3D view](https://raw.githubusercontent.com/Tunefish92/SatisfactoryMapRenderer/main/docs/screenshots/3d-factory.jpg)
 
 Source, full documentation and issues: **https://github.com/Tunefish92/SatisfactoryMapRenderer**
 

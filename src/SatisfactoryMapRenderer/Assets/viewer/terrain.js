@@ -480,13 +480,18 @@
     uniform vec3 eye, sun, haze;
     uniform int kind;               // 0 one colour, 1 texture image, 2 the game's shared factory material, 3 painted texture
     uniform vec3 flatColor, primaryPaint, secondaryPaint;
-    uniform sampler2D albedo;
+    uniform sampler2D albedo, paintMask;
+    uniform bool masked;            // the surface has a mask of where it is painted: green first colour, blue second
     uniform sampler2DArray factoryLayers;
     out vec4 color;
     void main() {
       vec3 base;
       if (kind == 1) {
         base = texture(albedo, vUv).rgb;
+        if (masked) {
+          vec3 where = texture(paintMask, vUv).rgb;
+          base *= mix(vec3(1.0), primaryPaint * 1.12, where.g) * mix(vec3(1.0), secondaryPaint * 1.5, where.b);
+        }
       } else if (kind == 3) {
         // a painted surface: paint where the texture is dark, the texture's bare metal elsewhere
         vec3 bare = texture(albedo, vUv).rgb;
@@ -514,7 +519,7 @@
   // Materials: texture images load in the background and appear when they are there.
   const hex = c => { const n = parseInt(String(c).slice(1), 16) || 0x9aa0a6; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
   const srgb = c => c.map(v => Math.pow(v, 1.0)); // colours are used as they are, like the textures
-  const materials = (F && F.materials || []).map(([kind, value]) => {
+  const materials = (F && F.materials || []).map(([kind, value, mask]) => {
     const textured = kind.startsWith('texture');
     // pipes in the paint they have as standard, FICSIT orange
     const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : kind === 'texture-painted' ? (value.startsWith('TX_Pipe_') ? [0.93, 0.50, 0.20] : [0.98, 0.58, 0.29]) : [0.62, 0.64, 0.66], texture: null };
@@ -532,6 +537,21 @@
         material.texture = t;
         needsDraw = true;
       }).catch(() => { /* stays grey */ });
+      if (mask) {
+        loadImage(`terrain/textures/${mask}`).then(img => {
+          const t = gl.createTexture();
+          gl.activeTexture(gl.TEXTURE6);
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.activeTexture(gl.TEXTURE0);
+          material.mask = t;
+          needsDraw = true;
+        }).catch(() => { /* unpainted */ });
+      }
     }
     return material;
   });
@@ -799,6 +819,8 @@
         gl.uniform3fv(m('haze'), sky);
         const boundsMin = m('boundsMin'), boundsSize = m('boundsSize'), kind = m('kind'), flatColor = m('flatColor');
         gl.uniform1i(m('albedo'), 2);
+        gl.uniform1i(m('paintMask'), 6);
+        const masked = m('masked');
         gl.uniform1i(m('factoryLayers'), 3);
         gl.uniform3fv(m('primaryPaint'), [0.98, 0.58, 0.29]);   // the factory's standard colours: FICSIT orange
         gl.uniform3fv(m('secondaryPaint'), [0.37, 0.40, 0.55]); // and blue-grey
@@ -816,6 +838,8 @@
             gl.uniform1i(kind, ready ? material.kind : 0);
             gl.uniform3fv(flatColor, material.color);
             if ((material.kind === 1 || material.kind === 3) && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
+            gl.uniform1i(masked, material.mask ? 1 : 0);
+            if (material.mask) { gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, material.mask); gl.activeTexture(gl.TEXTURE2); }
             gl.drawElementsInstanced(gl.TRIANGLES, section.count, item.indexType, section.first * item.indexBytes, item.count);
           }
         }

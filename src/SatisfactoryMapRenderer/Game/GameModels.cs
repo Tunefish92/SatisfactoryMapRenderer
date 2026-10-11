@@ -32,7 +32,11 @@ public sealed record ModelMesh(int V, int I, bool Wide, long VertexOffset, long 
 /// repeated mirrored, "texture-painted": the same, as the detail of a painted surface; "flat": one colour.
 /// </param>
 /// <param name="Root">The master material at the top of the parent chain; tells the families of materials apart.</param>
-public sealed record ModelMaterial(string Name, string Kind, string? Texture, string? Color, string? Root = null);
+/// <param name="Mask">
+/// For a texture: a second image that says where the paint goes, green for the first colour and blue for
+/// the second (red is shading). Null if the surface is not painted.
+/// </param>
+public sealed record ModelMaterial(string Name, string Kind, string? Texture, string? Color, string? Root = null, string? Mask = null);
 
 /// <summary>A mesh placed inside a building: translation (cm), rotation (quaternion x y z w) and scale, in the building's own space.</summary>
 public sealed record ModelPart(string Mesh, double[] T, double[] R, double[] S);
@@ -111,7 +115,7 @@ public sealed class ModelLibrary
 public static class GameModels
 {
     /// <summary>The level of detail with the fewest triangles that still has this many is used.</summary>
-    private const int WantedTriangles = 250, RepeatedTriangles = 90;
+    private const int WantedTriangles = 250, RepeatedTriangles = 90, DetailedTriangles = 5000;
 
     /// <summary>Helper geometry that is not part of what a building looks like.</summary>
     private static readonly string[] Ignored = ["Fog", "Clearance", "Hologram", "Arrow", "Collision", "Decal", "Snap", "Preview", "Guide", "Glow", "Trigger"];
@@ -129,6 +133,7 @@ public static class GameModels
     private static readonly string[] SkippedMaterials = ["Decal", "_IMP", "Imposter", "FactoryLod", "Hologram"];
 
     private static readonly string[] AlbedoNames = ["Albedo", "BaseColor", "Base Color", "BC", "Diffuse", "Color", "Albedo_A", "MainTexture", "Texture"];
+    private static readonly string[] MaskNames = ["AOMasks", "AO Masks", "AOMask", "AO_Masks"];
     private static readonly string[] AlbedoSuffixes = ["_BC", "_Alb", "_Albedo", "_BaseColor", "_D", "_Diff", "_Diffuse", "_Color"];
 
     public static ModelLibrary Extract(GameArchive archive, string directory, Action<string> log)
@@ -141,6 +146,7 @@ public static class GameModels
         var materials = new MaterialTable(library, textureDirectory);
         var meshObjects = new Dictionary<string, UObject>(StringComparer.Ordinal);
         var repeated = new HashSet<string>(StringComparer.Ordinal);
+        var detailed = new HashSet<string>(StringComparer.Ordinal); // few of them and looked at closely: the pioneer
         var slotOverrides = new Dictionary<string, FPackageIndex?[]>(StringComparer.Ordinal); // meshes placed with other materials than their own
         var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
         var partKeys = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -154,6 +160,33 @@ public static class GameModels
             {
                 var exports = archive.LoadExports(file).ToList();
                 var parts = new List<ModelPart>();
+                // A component can hang on another one (a group that is turned or moved as a whole); the
+                // blueprint's construction script says which. Its place is then relative to that one.
+                var hangsOn = new Dictionary<string, UObject>(StringComparer.Ordinal);
+                foreach (var node in exports.Where(e => e.ExportType == "SCS_Node"))
+                {
+                    if (node.GetOrDefault<UObject?>("ComponentTemplate") is not { } template)
+                        continue;
+                    foreach (var child in node.GetOrDefault<UObject[]>("ChildNodes") ?? [])
+                        if (child.GetOrDefault<UObject?>("ComponentTemplate") is { } hanging)
+                            hangsOn[hanging.Name] = template;
+                }
+                (FVector T, FQuat R, FVector S) Placed(UObject component)
+                {
+                    var t = component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+                    var r = component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                    var s = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                    for (int depth = 0; depth < 16 && hangsOn.TryGetValue(component.Name, out var parent); depth++, component = parent)
+                    {
+                        var pt = parent.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+                        var pr = parent.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                        var ps = parent.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                        t = pt + pr.RotateVector(new FVector(t.X * ps.X, t.Y * ps.Y, t.Z * ps.Z));
+                        r = pr * r;
+                        s = new FVector(s.X * ps.X, s.Y * ps.Y, s.Z * ps.Z);
+                    }
+                    return (t, r, s);
+                }
                 var keys = new List<string>(); // per part the name of the component it comes from
                 if (exports.OfType<UClass>().FirstOrDefault()?.SuperStruct?.Name is { } super && super.StartsWith("Build_", StringComparison.Ordinal))
                     parentOf[name + "_C"] = super;
@@ -220,9 +253,7 @@ public static class GameModels
                             || (component.TryGetValue(out bool hidden, "bHiddenInGame") && hidden)
                             || !component.TryGetValue(out FPackageIndex meshIndex, "StaticMesh") || Mesh(meshIndex, meshObjects) is not { } mesh)
                             continue;
-                        var location = component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
-                        var rotation = component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
-                        var scale = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                        var (location, rotation, scale) = Placed(component);
                         parts.Add(Part(mesh, location, rotation, scale));
                         keys.Add(component.Name.Replace("_GEN_VARIABLE", ""));
                     }
@@ -239,8 +270,8 @@ public static class GameModels
                         || Mesh(meshIndex, meshObjects) is not { } mesh
                         || parts.Take(fixedParts).Any(p => p.Mesh == mesh))
                         continue;
-                    parts.Add(Part(mesh, component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0)),
-                        component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion(), component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1))));
+                    var (location, rotation, scale) = Placed(component);
+                    parts.Add(Part(mesh, location, rotation, scale));
                     keys.Add(component.Name.Replace("_GEN_VARIABLE", ""));
                 }
 
@@ -266,6 +297,7 @@ public static class GameModels
         }
 
         ReadResources(archive, library, meshObjects, slotOverrides);
+        ReadPlayer(archive, library, meshObjects, detailed);
 
         // A building made from another building (the power tower with a platform from the power tower) only
         // holds what it adds or changes; the rest is the other building's. Buildings that list their meshes
@@ -301,7 +333,7 @@ public static class GameModels
                 try
                 {
                     // a piece that is repeated thousands of times along belts and pipes may be coarser
-                    if (Write(mesh, slotOverrides.GetValueOrDefault(name) ?? Slots(mesh), stream, materials, repeated.Contains(name) ? RepeatedTriangles : WantedTriangles) is { } written)
+                    if (Write(mesh, slotOverrides.GetValueOrDefault(name) ?? Slots(mesh), stream, materials, repeated.Contains(name) ? RepeatedTriangles : detailed.Contains(name) ? DetailedTriangles : WantedTriangles) is { } written)
                         library.Meshes[name] = written;
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -323,13 +355,69 @@ public static class GameModels
                 library.Lifts.Remove(name);
             }
         }
-        library.Save(directory);
+        // The second pipeline pump names no paint mask of its own; its texture is laid out like the first one's.
+        if (library.Materials.FirstOrDefault(m => m is { Root: "MMU_Pump_01", Mask: not null }) is { } pump)
+            for (int i = 0; i < library.Materials.Count; i++)
+                if (library.Materials[i] is { Root: "MMU_Pump_01", Kind: "texture", Mask: null } other)
+                    library.Materials[i] = other with { Mask = pump.Mask };
         library.Resources.RemoveAll(r => !library.Classes.ContainsKey(r.Class));
+        library.Save(directory);
         log($"  3D models: {library.Classes.Count:N0} buildings and {library.Resources.Count:N0} resource nodes from {library.Meshes.Count:N0} meshes, " +
             $"{library.Meshes.Values.Sum(m => (long)m.I) / 3:N0} triangles, {new FileInfo(Path.Combine(directory, ModelLibrary.DataFile)).Length / 1e6:0.0} MB; " +
             $"{library.Materials.Count:N0} materials ({library.Materials.Count(m => m.Kind == "factory")} factory, {library.Materials.Count(m => m.Kind.StartsWith("texture", StringComparison.Ordinal))} textured), " +
             $"{Directory.GetFiles(textureDirectory).Length} textures, {Directory.GetFiles(textureDirectory).Sum(f => new FileInfo(f).Length) / 1e6:0.0} MB");
         return library;
+    }
+
+    /// <summary>Class of the model library that stands for a player.</summary>
+    public const string PlayerClass = "Char_Player_C";
+    private const string PlayerBlueprint = "FactoryGame/Content/FactoryGame/Character/Player/Char_Player.uasset";
+
+    /// <summary>
+    /// The pioneer: the body as it is modelled (arms slightly spread), and the helmet, which the game puts
+    /// on the head bone.
+    /// </summary>
+    private static void ReadPlayer(GameArchive archive, ModelLibrary library, Dictionary<string, UObject> meshObjects, HashSet<string> detailed)
+    {
+        try
+        {
+            var exports = archive.LoadExports(PlayerBlueprint).ToList();
+            if (exports.FirstOrDefault(e => e.Name == "CharacterMesh3P") is not { } body
+                || !(body.TryGetValue(out FPackageIndex bodyIndex, "SkeletalMesh") || body.TryGetValue(out bodyIndex, "SkinnedAsset"))
+                || Mesh(bodyIndex, meshObjects) is not { } bodyMesh || meshObjects[bodyMesh] is not USkeletalMesh skeleton)
+                return;
+            var location = body.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+            var rotation = body.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+            var parts = new List<ModelPart> { Part(bodyMesh, location, rotation, new FVector(1, 1, 1)) };
+            detailed.Add(bodyMesh);
+
+            var bones = skeleton.ReferenceSkeleton;
+            int head = Array.FindIndex(bones.FinalRefBoneInfo, b => b.Name.Text.Equals("head", StringComparison.OrdinalIgnoreCase));
+            if (head >= 0 && exports.FirstOrDefault(e => e.Name.StartsWith("HelmetMesh", StringComparison.Ordinal)) is { } helmet
+                && helmet.TryGetValue(out FPackageIndex helmetIndex, "StaticMesh") && Mesh(helmetIndex, meshObjects) is { } helmetMesh)
+            {
+                // where the head is: every bone is placed relative to the one it hangs on
+                var at = new FVector(0, 0, 0);
+                var turned = FQuat.Identity;
+                var chain = new List<int>();
+                for (int bone = head; bone >= 0; bone = bones.FinalRefBoneInfo[bone].ParentIndex)
+                    chain.Add(bone);
+                for (int i = chain.Count - 1; i >= 0; i--)
+                {
+                    var pose = bones.FinalRefBonePose[chain[i]];
+                    at += turned.RotateVector(pose.Translation);
+                    turned *= pose.Rotation;
+                }
+                var own = helmet.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                parts.Add(Part(helmetMesh, location + rotation.RotateVector(at), rotation * turned * own, new FVector(1, 1, 1)));
+                detailed.Add(helmetMesh);
+            }
+            library.Classes[PlayerClass] = parts;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Without the model, players are only labelled.
+        }
     }
 
     private const string LevelDirectory = "/Map/GameLevel01/", ResourceMeshes = "/Game/FactoryGame/Resource/RawResources/";
@@ -650,14 +738,16 @@ public static class GameModels
                     bool mirrored = chain.Last().Name.StartsWith("MM_BakedStencil", StringComparison.Ordinal);
                     // Painted surfaces: the texture is dark where the paint goes and shows the bare metal elsewhere.
                     bool painted = PaintedMaterials.Contains(chain.Last().Name);
-                    return new ModelMaterial(name, mirrored ? "texture-mirrored" : painted ? "texture-painted" : "texture", file, null, chain.Last().Name);
+                    string? mask = PaintMask(chain);
+                    return new ModelMaterial(name, mirrored ? "texture-mirrored" : painted ? "texture-painted" : "texture", file, null, chain.Last().Name, painted ? null : mask);
                 }
             }
             if (chain.Last() is UMaterial root)
             {
                 var texture = root.ReferencedTextures?.FirstOrDefault(t => t is UTexture2D && AlbedoSuffixes.Any(s => t.Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
                 if (texture is not null && Texture(texture.Name, texture) is { } file)
-                    return new ModelMaterial(name, PaintedMaterials.Contains(root.Name) ? "texture-painted" : "texture", file, null, chain.Last().Name);
+                    return new ModelMaterial(name, PaintedMaterials.Contains(root.Name) ? "texture-painted" : "texture", file, null, chain.Last().Name,
+                        PaintedMaterials.Contains(root.Name) ? null : PaintMask(chain));
             }
 
             // the ore in the middle of a resource node is bare metal or crystal without a colour texture
@@ -670,6 +760,22 @@ public static class GameModels
                 : name.Contains("Rubber", StringComparison.OrdinalIgnoreCase) ? "#2b2b2d"
                 : "#9aa0a6";
             return new ModelMaterial(name, "flat", null, color, chain.Last().Name);
+        }
+
+        /// <summary>
+        /// Most baked surfaces of the factory come with a mask of where they are painted: named by the
+        /// material itself, or the one its master material uses when nothing else is said.
+        /// </summary>
+        private string? PaintMask(List<UObject> chain)
+        {
+            foreach (var owner in chain.OfType<UMaterialInstanceConstant>())
+            {
+                var masks = (owner.TextureParameterValues ?? []).FirstOrDefault(p => MaskNames.Contains(p.ParameterInfo.Name.Text, StringComparer.OrdinalIgnoreCase));
+                if (masks?.ParameterValue.ResolvedObject is { } texture)
+                    return Texture(texture.Name.Text, masks.ParameterValue);
+            }
+            var standard = (chain.Last() as UMaterial)?.ReferencedTextures?.FirstOrDefault(t => t is UTexture2D && t.Name.Contains("AOMask", StringComparison.OrdinalIgnoreCase));
+            return standard is null ? null : Texture(standard.Name, standard);
         }
 
         private string? Texture(string name, FPackageIndex index) =>
