@@ -10,6 +10,9 @@
   surfaces. "Realistic ground" in the 3D view switches back to the in-game map.
 * 3D view: conveyor belts, pipes, hypertubes and railway tracks in the game's own models and textures, laid
   along their paths piece by piece as in the game.
+* 3D view: conveyor lifts in the game's own pieces; arms and other animated parts of machines (quantum
+  encoder, space elevator); buildings made from another building show its parts too (power tower with
+  platform); pipeline pumps Mk.2 are found despite the game's two spellings of their name.
 * 3D view: buildings are clickable and show the same details as on the 2D map.
 * 3D view: models that were incomplete are whole (water extractor with its moving part and paint; no more
   stand-in levels of detail), and the space elevator's shaft and platform stand at their real height.

@@ -2,10 +2,13 @@ using System.Buffers.Binary;
 using System.Text.Json;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Material;
+using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Objects.Core.Math;
+using CUE4Parse.UE4.Objects.Meshes;
+using CUE4Parse.UE4.Objects.RenderCore;
 using CUE4Parse.UE4.Objects.UObject;
 using SkiaSharp;
 
@@ -51,13 +54,19 @@ public sealed class ModelLibrary
     public List<string> FactoryLayers { get; set; } = [];
 
     /// <summary>Building class ("Build_ConstructorMk1_C") → the meshes it consists of.</summary>
-    public Dictionary<string, List<ModelPart>> Classes { get; set; } = [];
+    public Dictionary<string, List<ModelPart>> Classes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Conveyor lifts: their class has three parts, the piece at the start, the piece that is repeated in
+    /// between, and the piece at the other end. The value is the height (cm) of one piece in between.
+    /// </summary>
+    public Dictionary<string, double> Lifts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Classes that are laid along a path (belts, pipes, hypertubes): their one mesh runs along x and is
     /// repeated, stretched to this length (cm) per piece.
     /// </summary>
-    public Dictionary<string, double> Splines { get; set; } = [];
+    public Dictionary<string, double> Splines { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -69,7 +78,13 @@ public sealed class ModelLibrary
         try
         {
             var library = JsonSerializer.Deserialize<ModelLibrary>(File.ReadAllText(index), Json);
-            return library?.Version == FormatVersion ? library : null;
+            if (library?.Version != FormatVersion)
+                return null;
+            // The game is not consistent in its own spelling (Build_PipelinePumpMk2 in saves, …MK2 in the files).
+            library.Classes = new(library.Classes, StringComparer.OrdinalIgnoreCase);
+            library.Splines = new(library.Splines, StringComparer.OrdinalIgnoreCase);
+            library.Lifts = new(library.Lifts, StringComparer.OrdinalIgnoreCase);
+            return library;
         }
         catch (JsonException)
         {
@@ -118,8 +133,11 @@ public static class GameModels
             Directory.Delete(textureDirectory, recursive: true);
         Directory.CreateDirectory(textureDirectory);
         var materials = new MaterialTable(library, textureDirectory);
-        var meshObjects = new Dictionary<string, UStaticMesh>(StringComparer.Ordinal);
+        var meshObjects = new Dictionary<string, UObject>(StringComparer.Ordinal);
         var repeated = new HashSet<string>(StringComparer.Ordinal);
+        var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        var partKeys = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var liftPieces = new Dictionary<string, string>(StringComparer.Ordinal); // what later lifts take over from Mk.1
 
         foreach (string file in archive.Files.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
                                                          && Path.GetFileName(f).StartsWith("Build_", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
@@ -129,6 +147,9 @@ public static class GameModels
             {
                 var exports = archive.LoadExports(file).ToList();
                 var parts = new List<ModelPart>();
+                var keys = new List<string>(); // per part the name of the component it comes from
+                if (exports.OfType<UClass>().FirstOrDefault()?.SuperStruct?.Name is { } super && super.StartsWith("Build_", StringComparison.Ordinal))
+                    parentOf[name + "_C"] = super;
 
                 var defaults = exports.FirstOrDefault(e => e.Name == "Default__" + name + "_C");
                 // Belts, pipes and hypertubes: one piece of mesh, repeated along the path.
@@ -137,10 +158,34 @@ public static class GameModels
                 {
                     double length = defaults.GetOrDefault<float>("mMeshLength");
                     if (length <= 0)
-                        length = Math.Max(meshObjects[piece].RenderData?.Bounds?.BoxExtent.X * 2 ?? 0, 100);
+                        length = Math.Max((meshObjects[piece] as UStaticMesh)?.RenderData?.Bounds?.BoxExtent.X * 2 ?? 0, 100);
                     library.Classes[name + "_C"] = [Part(piece, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))];
                     library.Splines[name + "_C"] = length;
                     repeated.Add(piece);
+                    continue;
+                }
+
+                // Conveyor lifts: a piece at each end and one that is stacked in between. The later marks only
+                // name what differs from Mk.1.
+                if (defaults is not null && name.StartsWith("Build_ConveyorLiftMk", StringComparison.Ordinal))
+                {
+                    var pieces = new List<string>();
+                    foreach (string property in new[] { "mBottomMesh", "mMidMesh", "mTopMesh" })
+                    {
+                        if (defaults.TryGetValue(out FPackageIndex index, property) && Mesh(index, meshObjects) is { } own)
+                            liftPieces[property] = own;
+                        else if (!liftPieces.TryGetValue(property, out own!))
+                            break;
+                        pieces.Add(own);
+                        if (name.EndsWith("Mk1", StringComparison.Ordinal))
+                            liftPieces[property] = own;
+                    }
+                    if (pieces.Count == 3)
+                    {
+                        library.Classes[name + "_C"] = [.. pieces.Select(p => Part(p, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1)))];
+                        library.Lifts[name + "_C"] = 200;
+                        repeated.Add(pieces[1]);
+                    }
                     continue;
                 }
 
@@ -154,6 +199,7 @@ public static class GameModels
                             continue;
                         var t = instance.GetOrDefault("RelativeTransform", FTransform.Identity);
                         parts.Add(Part(mesh, t.Translation, t.Rotation, t.Scale3D));
+                        keys.Add("");
                     }
                 }
 
@@ -171,24 +217,30 @@ public static class GameModels
                         var rotation = component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
                         var scale = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
                         parts.Add(Part(mesh, location, rotation, scale));
+                        keys.Add(component.Name.Replace("_GEN_VARIABLE", ""));
                     }
                 }
 
-                // Moving parts (pump heads, pistons) are meshes of their own, in the pose they rest in.
-                foreach (var component in exports.Where(e => e.ExportType == "FGVertexAnimatedMeshComponent"))
+                // Moving parts (pump heads, pistons, arms) are meshes of their own, in the pose they rest in.
+                int fixedParts = parts.Count;
+                foreach (var component in exports.Where(e => e.ExportType is "FGVertexAnimatedMeshComponent" or "SkeletalMeshComponent"))
                 {
                     if (Ignored.Any(i => component.Name.Contains(i, StringComparison.OrdinalIgnoreCase))
-                        || !component.TryGetValue(out FPackageIndex meshIndex, "StaticMesh") || Mesh(meshIndex, meshObjects) is not { } mesh
-                        || parts.Any(p => p.Mesh == mesh))
+                        || (component.TryGetValue(out bool visible, "bVisible") && !visible)
+                        || (component.TryGetValue(out bool hidden, "bHiddenInGame") && hidden)
+                        || !(component.TryGetValue(out FPackageIndex meshIndex, "StaticMesh") || component.TryGetValue(out meshIndex, "SkeletalMesh") || component.TryGetValue(out meshIndex, "SkinnedAsset"))
+                        || Mesh(meshIndex, meshObjects) is not { } mesh
+                        || parts.Take(fixedParts).Any(p => p.Mesh == mesh))
                         continue;
                     parts.Add(Part(mesh, component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0)),
                         component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion(), component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1))));
+                    keys.Add(component.Name.Replace("_GEN_VARIABLE", ""));
                 }
 
                 // The space elevator's shaft and the platform on top of it are stored hanging below the
                 // building; the game lifts them when it is built, so that the shaft stands on the base.
                 if (name == "Build_SpaceElevator" && parts.FirstOrDefault(p => p.Mesh.Contains("MidPart_01", StringComparison.Ordinal)) is { } shaft
-                    && meshObjects[shaft.Mesh].RenderData?.Bounds is { } bounds)
+                    && (meshObjects[shaft.Mesh] as UStaticMesh)?.RenderData?.Bounds is { } bounds)
                 {
                     double lift = -(bounds.Origin.Z - bounds.BoxExtent.Z);
                     for (int i = 0; i < parts.Count; i++)
@@ -198,12 +250,39 @@ public static class GameModels
 
                 if (parts.Count > 0)
                     library.Classes[name + "_C"] = parts;
+                partKeys[name + "_C"] = keys;
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 // A building that cannot be read is drawn as a box.
             }
         }
+
+        // A building made from another building (the power tower with a platform from the power tower) only
+        // holds what it adds or changes; the rest is the other building's. Buildings that list their meshes
+        // as instances list all of them.
+        var inherited = new HashSet<string>(StringComparer.Ordinal);
+        void Inherit(string name)
+        {
+            if (!inherited.Add(name) || !parentOf.TryGetValue(name, out string? parent) || library.Splines.ContainsKey(name) || library.Lifts.ContainsKey(name)
+                || library.Splines.ContainsKey(parent) || library.Lifts.ContainsKey(parent))
+                return;
+            Inherit(parent);
+            if (!library.Classes.TryGetValue(parent, out var theirs) || !partKeys.TryGetValue(parent, out var theirKeys) || !partKeys.TryGetValue(name, out var keys)
+                || keys.Contains(""))
+                return;
+            if (!library.Classes.TryGetValue(name, out var parts))
+                library.Classes[name] = parts = [];
+            for (int i = 0; i < theirs.Count && i < theirKeys.Count; i++)
+            {
+                if ((theirKeys[i].Length > 0 && keys.Contains(theirKeys[i])) || parts.Any(p => p.Mesh == theirs[i].Mesh && p.T.SequenceEqual(theirs[i].T)))
+                    continue;
+                parts.Add(theirs[i]);
+                keys.Add(theirKeys[i]);
+            }
+        }
+        foreach (string name in parentOf.Keys.ToList())
+            Inherit(name);
 
         // The mesh data itself, each mesh once.
         using (var stream = File.Create(Path.Combine(directory, ModelLibrary.DataFile)))
@@ -226,11 +305,13 @@ public static class GameModels
         // Parts whose mesh could not be written are dropped, and classes left without parts with them.
         foreach (var (name, parts) in library.Classes.ToList())
         {
+            int before = parts.Count;
             parts.RemoveAll(p => !library.Meshes.ContainsKey(p.Mesh));
-            if (parts.Count == 0)
+            if (parts.Count == 0 || (parts.Count < before && library.Lifts.ContainsKey(name)))
             {
                 library.Classes.Remove(name);
                 library.Splines.Remove(name);
+                library.Lifts.Remove(name);
             }
         }
         library.Save(directory);
@@ -241,7 +322,7 @@ public static class GameModels
         return library;
     }
 
-    private static string? Mesh(FPackageIndex index, Dictionary<string, UStaticMesh> meshes)
+    private static string? Mesh(FPackageIndex index, Dictionary<string, UObject> meshes)
     {
         if (index.IsNull || index.ResolvedObject is not { } resolved)
             return null;
@@ -250,7 +331,7 @@ public static class GameModels
             return null;
         if (!meshes.ContainsKey(name))
         {
-            if (index.Load() is not UStaticMesh mesh)
+            if (index.Load() is not { } mesh || mesh is not (UStaticMesh or USkeletalMesh))
                 return null;
             meshes[name] = mesh;
         }
@@ -262,31 +343,84 @@ public static class GameModels
 
     private static double Round(double v) => Math.Round(v, 1);
 
-    private static ModelMesh? Write(UStaticMesh mesh, Stream stream, MaterialTable materials, int wantedTriangles)
+    /// <summary>One run of triangles with one material.</summary>
+    private readonly record struct Run(int Material, int First, int Triangles);
+
+    /// <summary>One level of detail of a mesh, whichever kind the mesh is.</summary>
+    private sealed record Level(int VertexCount, int IndexCount, Run[] Runs, Func<int, FVector> Position, Func<int, FVector> Normal, Func<int, (float U, float V)> Uv, Func<int, int> Index);
+
+    private static List<Level> Levels(UObject mesh)
     {
-        var lods = mesh.RenderData?.LODs?.Where(l => l is { SkipLod: false, PositionVertexBuffer.Verts.Length: > 0 } && l.IndexBuffer is { Length: >= 3 }).ToList();
-        if (lods is not { Count: > 0 })
+        var levels = new List<Level>();
+        if (mesh is UStaticMesh fixedMesh)
+        {
+            foreach (var l in fixedMesh.RenderData?.LODs ?? [])
+            {
+                if (l is not { SkipLod: false, PositionVertexBuffer.Verts.Length: > 0 } || l.IndexBuffer is not { Length: >= 3 } indices)
+                    continue;
+                var positions = l.PositionVertexBuffer.Verts;
+                var extra = l.VertexBuffer?.UV;
+                levels.Add(new Level(positions.Length, indices.Length, [.. l.Sections.Select(s => new Run(s.MaterialIndex, s.FirstIndex, s.NumTriangles))],
+                    i => positions[i],
+                    i => extra is not null && i < extra.Length && extra[i].Normal is { Length: > 2 } packed ? (FVector)packed[2] : new FVector(0, 0, 1),
+                    i => extra is not null && i < extra.Length && extra[i].UV is { Length: > 0 } uv ? (uv[0].U, uv[0].V) : (0, 0),
+                    i => indices[i]));
+            }
+        }
+        else if (mesh is USkeletalMesh skinned)
+        {
+            // A machine's arms and other animated parts, in the pose they are modelled in.
+            foreach (var l in skinned.LODModels ?? [])
+            {
+                if (l is not { SkipLod: false, VertexBufferGPUSkin: { } buffer } || l.Indices is not { Length: >= 3 } indices)
+                    continue;
+                FVector[] positions; FPackedNormal[][] normals; FMeshUVFloat[][] uvs;
+                if (buffer.VertsFloat is { Length: > 0 } floats)
+                    (positions, normals, uvs) = ([.. floats.Select(v => v.Pos)], [.. floats.Select(v => v.Normal)], [.. floats.Select(v => v.UVs)]);
+                else if (buffer.VertsHalf is { Length: > 0 } halves)
+                    (positions, normals, uvs) = ([.. halves.Select(v => v.Pos)], [.. halves.Select(v => v.Normal)], [.. halves.Select(v => v.UVs)]);
+                else
+                    continue;
+                levels.Add(new Level(positions.Length, indices.Length, [.. l.Sections.Where(s => !s.bDisabled).Select(s => new Run(s.MaterialIndex, s.BaseIndex, s.NumTriangles))],
+                    i => positions[i],
+                    i => normals[i] is { Length: > 2 } packed ? (FVector)packed[2] : new FVector(0, 0, 1),
+                    i => uvs[i] is { Length: > 0 } uv ? (uv[0].U, uv[0].V) : (0, 0),
+                    i => indices[i]));
+            }
+        }
+        return levels;
+    }
+
+    private static FPackageIndex?[] Slots(UObject mesh) => mesh switch
+    {
+        UStaticMesh m => m.Materials ?? [],
+        USkeletalMesh m => m.Materials ?? [],
+        _ => [],
+    };
+
+    private static ModelMesh? Write(UObject mesh, Stream stream, MaterialTable materials, int wantedTriangles)
+    {
+        var lods = Levels(mesh);
+        if (lods.Count == 0)
             return null;
+        var slots = Slots(mesh);
 
         // Coarse, but not so coarse that the shape is lost, and not one of the levels that swap the real
         // materials for a stand-in.
-        int[] Material(FStaticMeshLODResources lod) => lod.Sections.Select(s => materials.Index(mesh, s.MaterialIndex)).ToArray();
-        var candidates = lods.Select(l => (Lod: l, Materials: Material(l))).ToList();
+        var candidates = lods.Select(l => (Lod: l, Materials: l.Runs.Select(r => materials.Index(slots, r.Material)).ToArray())).ToList();
         var real = candidates.Where(c => c.Materials.Any(m => m >= 0)).ToList();
         if (real.Count == 0)
             return null;
         // Levels that swap part of the model for a stand-in would leave that part out.
-        var whole = real.Where(c => !c.Lod.Sections.Any(s => materials.IsStandIn(mesh, s.MaterialIndex))).ToList();
+        var whole = real.Where(c => !c.Lod.Runs.Any(r => materials.IsStandIn(slots, r.Material))).ToList();
         if (whole.Count > 0)
             real = whole;
-        var (lod, sectionMaterials) = real.Where(c => c.Lod.IndexBuffer!.Length / 3 >= wantedTriangles).OrderBy(c => c.Lod.IndexBuffer!.Length).FirstOrDefault() is { Lod: not null } wanted
+        var (lod, sectionMaterials) = real.Where(c => c.Lod.IndexCount / 3 >= wantedTriangles).OrderBy(c => c.Lod.IndexCount).FirstOrDefault() is { Lod: not null } wanted
             ? wanted
-            : real.OrderByDescending(c => c.Lod.IndexBuffer!.Length).First();
+            : real.OrderByDescending(c => c.Lod.IndexCount).First();
 
-        var positions = lod.PositionVertexBuffer!.Verts;
-        var extra = lod.VertexBuffer?.UV;
-        var indices = lod.IndexBuffer!;
-        int vertexCount = positions.Length;
+        int vertexCount = lod.VertexCount;
+        var positions = Enumerable.Range(0, vertexCount).Select(lod.Position).ToArray();
 
         double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
         foreach (var p in positions)
@@ -306,12 +440,11 @@ public static class GameModels
             BinaryPrimitives.WriteInt16LittleEndian(vertex, Quantize((p.X - minX) / sizeX));
             BinaryPrimitives.WriteInt16LittleEndian(vertex.AsSpan(2), Quantize((p.Y - minY) / sizeY));
             BinaryPrimitives.WriteInt16LittleEndian(vertex.AsSpan(4), Quantize((p.Z - minZ) / sizeZ));
-            var item = extra is not null && i < extra.Length ? extra[i] : null;
-            FVector n = item?.Normal is { Length: > 2 } packed ? (FVector)packed[2] : new FVector(0, 0, 1);
+            FVector n = lod.Normal(i);
             vertex[6] = (byte)(sbyte)Math.Clamp(Math.Round(n.X * 127), -127, 127);
             vertex[7] = (byte)(sbyte)Math.Clamp(Math.Round(n.Y * 127), -127, 127);
             vertex[8] = (byte)(sbyte)Math.Clamp(Math.Round(n.Z * 127), -127, 127);
-            float u = item?.UV is { Length: > 0 } uv ? uv[0].U : 0, v = item?.UV is { Length: > 0 } uv2 ? uv2[0].V : 0;
+            var (u, v) = lod.Uv(i);
             BinaryPrimitives.WriteSingleLittleEndian(vertex.AsSpan(12), float.IsFinite(u) ? u : 0);
             BinaryPrimitives.WriteSingleLittleEndian(vertex.AsSpan(16), float.IsFinite(v) ? v : 0);
             stream.Write(vertex);
@@ -324,18 +457,18 @@ public static class GameModels
         byte[] index = new byte[4];
         var sections = new List<int[]>();
         int written = 0;
-        for (int s = 0; s < lod.Sections.Length; s++)
+        for (int s = 0; s < lod.Runs.Length; s++)
         {
-            var section = lod.Sections[s];
-            if (sectionMaterials[s] < 0 || section.NumTriangles <= 0)
+            var section = lod.Runs[s];
+            if (sectionMaterials[s] < 0 || section.Triangles <= 0)
                 continue;
-            int count = Math.Min(section.NumTriangles * 3, indices.Length - section.FirstIndex);
+            int count = Math.Min(section.Triangles * 3, lod.IndexCount - section.First);
             count -= count % 3;
             if (count <= 0)
                 continue;
             for (int i = 0; i < count; i++)
             {
-                int value = indices[section.FirstIndex + i];
+                int value = lod.Index(section.First + i);
                 if (wide)
                 {
                     BinaryPrimitives.WriteUInt32LittleEndian(index, (uint)value);
@@ -363,14 +496,14 @@ public static class GameModels
         private readonly Dictionary<string, string?> _textures = new(StringComparer.Ordinal);
 
         /// <summary>A material that replaces the real ones on a coarse level of detail.</summary>
-        public bool IsStandIn(UStaticMesh mesh, int slot) =>
-            mesh.Materials is { } slots && slot >= 0 && slot < slots.Length && slots[slot]?.ResolvedObject is { } resolved
+        public bool IsStandIn(FPackageIndex?[] slots, int slot) =>
+            slot >= 0 && slot < slots.Length && slots[slot]?.ResolvedObject is { } resolved
             && StandIns.Any(s => resolved.Name.Text.Contains(s, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>Index into <see cref="ModelLibrary.Materials"/>, or -1 for a surface that is not drawn.</summary>
-        public int Index(UStaticMesh mesh, int slot)
+        public int Index(FPackageIndex?[] slots, int slot)
         {
-            if (mesh.Materials is not { } slots || slot < 0 || slot >= slots.Length || slots[slot]?.ResolvedObject is not { } resolved)
+            if (slot < 0 || slot >= slots.Length || slots[slot]?.ResolvedObject is not { } resolved)
                 return -1;
             string name = resolved.Name.Text;
             if (_byName.TryGetValue(name, out int known))

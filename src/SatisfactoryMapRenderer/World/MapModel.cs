@@ -69,6 +69,9 @@ public sealed class MapFeature
     /// <summary>Full rotation and scale of a building, for placing its 3D model.</summary>
     public Quaternion Rotation { get; init; } = Quaternion.Identity;
     public Vector3 Scale { get; init; } = new(1, 1, 1);
+
+    /// <summary>Conveyor lifts: where the other end is, seen from the building, and how it is turned.</summary>
+    public (Vector3 Offset, Quaternion Rotation)? Top { get; set; }
     public double SizeX { get; init; }
     public double SizeY { get; init; }
 

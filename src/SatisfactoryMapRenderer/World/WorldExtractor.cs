@@ -387,7 +387,9 @@ public sealed class WorldExtractor
                 AddWire(e, info);
                 return;
             case BuildCategory.Lift:
-                AddBox(e, info, Layers.Belts, BeltColor(e.ShortClassName.Replace("Lift", "Belt")));
+                var lift = AddBox(e, info, Layers.Belts, BeltColor(e.ShortClassName.Replace("Lift", "Belt")));
+                if (e.Properties.Get("mTopTransform") is StructValue { Data: PropertyList top } && AsVector(top.Get("Translation")) is { } offset)
+                    lift.Top = (offset, top.Get("Rotation") is StructValue { Data: Quaternion turned } ? turned : Quaternion.Identity);
                 return;
             case BuildCategory.BeltSupport:
                 AddBox(e, info, Layers.Belts, "#8e6b3d");

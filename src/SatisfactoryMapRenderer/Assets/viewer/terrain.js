@@ -290,8 +290,29 @@
           add(b[i] - centreX, b[i + 2] + b[i + 13] + b[i + 12] / 2, b[i + 1] - centreY, b[i + 10] / 2, b[i + 12] / 2, b[i + 11] / 2, yaw, 0, color);
         }
       }
+      // Conveyor lifts: the piece at the start, pieces stacked in between, the piece at the other end.
+      const lifts = layer.lifts || [];
+      for (let i = 0; i + 15 < lifts.length; i += 16) {
+        const parts = partMatrices[lifts[i + 15]], step = F.pieces[lifts[i + 15]], color = rgb[lifts[i + 14]];
+        if (!parts || parts.length < 3 || !(step > 0)) continue;
+        const tint = [0.5 + color[0] * 0.38, 0.5 + color[1] * 0.38, 0.5 + color[2] * 0.38];
+        const base = transform(lifts[i] - centreX, lifts[i + 1] - centreY, lifts[i + 2], lifts[i + 3] / 10000, lifts[i + 4] / 10000, lifts[i + 5] / 10000, lifts[i + 6] / 10000, 1, 1, 1);
+        const rise = lifts[i + 9], low = Math.min(rise, 0), span = Math.abs(rise);
+        const place = (part, local) => {
+          let list = perMesh.get(part.mesh);
+          if (!list) perMesh.set(part.mesh, list = []);
+          list.push(...combine(base, local), tint[0], tint[1], tint[2]);
+          triangleCount += F.meshes[part.mesh][1] / 3;
+        };
+        place(parts[0], transform(0, 0, 0, 0, 0, 0, 1, 1, 1, 1));
+        place(parts[2], transform(lifts[i + 7], lifts[i + 8], rise, lifts[i + 10] / 10000, lifts[i + 11] / 10000, lifts[i + 12] / 10000, lifts[i + 13] / 10000, 1, 1, 1));
+        const count = Math.max(1, Math.round(span / step)), native = F.meshes[parts[1].mesh][10] || step;
+        for (let k = 0; k < count; k++) place(parts[1], transform(0, 0, low + span * k / count, 0, 0, 0, 1, 1, 1, span / count / native));
+        modelCount++;
+      }
+
       const l = layer.lines;
-      let lineCount = 0;
+      let lineCount = lifts.length / 16;
       for (let i = 0; i + 2 < l.length;) {
         const color = rgb[l[i]], width = l[i + 1], cls = l[i + 2], count = l[i + 3];
         // belts and rails are flat, pipes, hypertubes and wires round
@@ -662,7 +683,7 @@
   let matrix = new Float32Array(16), eye = [0, 0, 0];
   function updateCamera() {
     const tx = view.target[0], tz = view.target[2];
-    const ty = groundAt(tx + W.minX + W.size / 2, tz + W.minY + W.size / 2);
+    const ty = groundAt(tx + W.minX + W.size / 2, tz + W.minY + W.size / 2) + (view.raise || 0);
     const cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
     eye = [tx + view.distance * cp * Math.sin(view.yaw), ty + view.distance * sp, tz + view.distance * cp * Math.cos(view.yaw)];
     const f = norm(sub([tx, ty, tz], eye)), s = norm(cross(f, [0, 1, 0])), u = cross(s, f);
@@ -845,7 +866,7 @@
     updateCamera();
     const box = canvas.getBoundingClientRect(), half = Math.tan(0.4);
     const nx = ((clientX - box.left) / box.width * 2 - 1) * half * box.width / box.height, ny = (1 - (clientY - box.top) / box.height * 2) * half;
-    const ty = groundAt(view.target[0] + centreX, view.target[2] + centreY);
+    const ty = groundAt(view.target[0] + centreX, view.target[2] + centreY) + (view.raise || 0);
     const f = norm(sub([view.target[0], ty, view.target[2]], eye)), s = norm(cross(f, [0, 1, 0])), u = cross(s, f);
     return norm([f[0] + s[0] * nx + u[0] * ny, f[1] + s[1] * nx + u[1] * ny, f[2] + s[2] * nx + u[2] * ny]);
   }
@@ -949,7 +970,7 @@
   window.addEventListener('keydown', e => { if (e.key === 'f' && !e.ctrlKey && !e.metaKey) reset(); });
   $('terrain-reset').addEventListener('click', reset);
 
-  window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; }, pickable: pickable.length, project, models: modelCount, triangles: Math.round(triangleCount) }; // for automated tests and the console
+  window.satisfactoryTerrain = { view, redraw: () => { needsDraw = true; }, pickable: pickable.length, project, groundAt, models: modelCount, triangles: Math.round(triangleCount) }; // for automated tests and the console
   status('');
   requestAnimationFrame(frame);
 })().catch(e => {

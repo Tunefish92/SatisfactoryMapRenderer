@@ -165,6 +165,7 @@ public static class HtmlExporter
             ? classes.TryGetValue(name, out int i) ? i : classes[name] = classes.Count
             : -1;
 
+        bool IsLift(MapFeature f) => f.Shape == Shape.Box && f.Top is not null && library is not null && library.Lifts.ContainsKey(f.Class);
         var layers = new[] { Layers.Foundations, Layers.Buildings, Layers.Belts, Layers.Pipes, Layers.Railways, Layers.Power };
         var colors = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int Color(string color) => colors.TryGetValue(color, out int i) ? i : colors[color] = colors.Count;
@@ -188,7 +189,7 @@ public static class HtmlExporter
                 // 16 numbers per building: position x y z, rotation quaternion x y z w (1/10000), scale x y z (1/1000),
                 // then for its box: size x, size y, height, bottom relative to z; colour; model class or -1
                 w.WriteStartArray("boxes");
-                foreach (var f in features.Where(f => f.Shape == Shape.Box))
+                foreach (var f in features.Where(f => f.Shape == Shape.Box && !IsLift(f)))
                 {
                     var category = Enum.TryParse<BuildCategory>(f.Group, out var parsed) ? parsed : BuildCategory.Other;
                     var (height, baseOffset) = Catalog.HeightOf(f.Class, category);
@@ -198,6 +199,23 @@ public static class HtmlExporter
                                  f.Position.X, f.Position.Y, f.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
                                  f.Scale.X * 1000, f.Scale.Y * 1000, f.Scale.Z * 1000,
                                  f.SizeX, f.SizeY, height, baseOffset, Color(f.Color), Class(f.Class),
+                             })
+                        w.WriteNumberValue((long)Math.Round(v));
+                }
+                w.WriteEndArray();
+
+                // 16 numbers per conveyor lift: position x y z, rotation x y z w (1/10000), the other end's offset
+                // x y z and rotation x y z w (1/10000), colour, model class
+                w.WriteStartArray("lifts");
+                foreach (var f in features.Where(IsLift))
+                {
+                    var (offset, turned) = f.Top!.Value;
+                    var r = f.Rotation;
+                    foreach (double v in new[]
+                             {
+                                 f.Position.X, f.Position.Y, f.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
+                                 offset.X, offset.Y, offset.Z, turned.X * 10000, turned.Y * 10000, turned.Z * 10000, turned.W * 10000,
+                                 Color(f.Color), Class(f.Class),
                              })
                         w.WriteNumberValue((long)Math.Round(v));
                 }
@@ -301,7 +319,7 @@ public static class HtmlExporter
         // per class: 0, or for a class laid along a path the length of one piece of its mesh
         w.WriteStartArray("pieces");
         foreach (var name in classes.OrderBy(c => c.Value).Select(c => c.Key))
-            w.WriteNumberValue(library.Splines.GetValueOrDefault(name));
+            w.WriteNumberValue(library.Splines.GetValueOrDefault(name) + library.Lifts.GetValueOrDefault(name));
         w.WriteEndArray();
 
         // per class: parts as mesh, translation x y z, rotation x y z w, scale x y z
