@@ -32,12 +32,24 @@ run_app() {
     # map works out of the box. A game folder mounted at /game is exported once into the data
     # folder, e.g. after a game update that the image does not know yet; an export in the data
     # folder always wins over the bundled one.
+    # An export made by an older version of this app lacks what newer versions use (ground map, 3D
+    # models): it is made again from /game, or set aside in favour of the bundled game data.
+    if [ -f "$DATA_PATH/gamedata/gamedata.json" ] && [ ! -f "$DATA_PATH/gamedata/ground-map.jpg" ]; then
+        if [ -d /game/FactoryGame ]; then
+            echo "The game data in $DATA_PATH/gamedata was exported by an older version; exporting it again."
+            rm -f "$DATA_PATH/gamedata/gamedata.json"
+        else
+            echo "The game data in $DATA_PATH/gamedata was exported by an older version and is not used." >&2
+            echo "Mount the game at /game to export it again, or delete that folder; using the bundled game data." >&2
+            OLD_EXPORT=1
+        fi
+    fi
     if [ -d /game/FactoryGame ] && [ ! -f "$DATA_PATH/gamedata/gamedata.json" ]; then
         echo "Exporting game data from /game (one-time)..."
         "$@" --export-game-data --game /game --game-data "$DATA_PATH/gamedata" --cache "$DATA_PATH/cache" \
             || echo "Could not export the game data; using the bundled game data." >&2
     fi
-    if [ -f "$DATA_PATH/gamedata/gamedata.json" ]; then
+    if [ -f "$DATA_PATH/gamedata/gamedata.json" ] && [ -z "$OLD_EXPORT" ]; then
         GAME_DATA="$DATA_PATH/gamedata"
     else
         GAME_DATA=/app/gamedata

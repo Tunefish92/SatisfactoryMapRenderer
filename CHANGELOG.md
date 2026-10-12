@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 – 2026-10-12
+
+* After an update, a map that an older version rendered is rendered again at start from the save kept in the
+  cache, so that the new base maps and the 3D view appear without loading the save again.
+* Docker: game data in the data folder that an older version exported is no longer used in place of the
+  bundled data (it has no ground map and no 3D models); with the game mounted at `/game` it is exported again.
+
 ## 0.2.0 – 2026-10-12
 
 ### 3D view

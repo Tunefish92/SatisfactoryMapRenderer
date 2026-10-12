@@ -291,7 +291,10 @@ internal static class Program
         else if (!File.Exists(Path.Combine(o.Output!, "map-data.js")))
             HtmlExporter.ExportEmpty(o.Output!, o.MaxZoom, game);
         else
+        {
             HtmlExporter.RefreshViewer(o.Output!, game);
+            RenderAgainAfterUpdate(o, game);
+        }
 
         using var stop = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
@@ -307,6 +310,38 @@ internal static class Program
         {
             Console.Error.WriteLine($"Could not listen on port {port}: {ex.Message}");
             Environment.ExitCode = 1;
+        }
+    }
+
+    /// <summary>Names the version that rendered a map, so that a newer version knows the map is not its own.</summary>
+    private const string RenderedStamp = ".rendered";
+
+    /// <summary>
+    /// A map on disk that another version rendered lacks what this version adds (base maps, the 3D view).
+    /// The save it was made from is usually still in the cache: render it again.
+    /// </summary>
+    private static void RenderAgainAfterUpdate(Options o, GameAssets? game)
+    {
+        string stamp = Path.Combine(o.Output!, RenderedStamp);
+        if (File.Exists(stamp) && File.ReadAllText(stamp).Trim() == HtmlExporter.Version)
+            return;
+        var name = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(o.Output!, "map-data.js")), "\"fileName\":\"([^\"]*)\"");
+        if (!name.Success || name.Groups[1].Value.Length == 0)
+            return;
+        string save = Path.Combine(o.CacheDirectory, "saves", Path.GetFileName(System.Text.RegularExpressions.Regex.Unescape(name.Groups[1].Value)));
+        if (!File.Exists(save))
+        {
+            Console.WriteLine("The map on disk was rendered by another version; load or refresh the save game to get everything this version shows.");
+            return;
+        }
+        Console.WriteLine($"The map on disk was rendered by another version; rendering it again from {save}");
+        try
+        {
+            Render(o, save, game);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine($"Could not render the map again ({ex.Message}); load or refresh the save game in the page.");
         }
     }
 
@@ -355,6 +390,8 @@ internal static class Program
             if (message.StartsWith("  ", StringComparison.Ordinal) && message.Contains(':'))
                 progress?.Invoke($"Drawing the map: {message.Trim().Split(':')[0].ToLowerInvariant()}", 25 + Math.Min(++layersDone, layersTotal) * 72 / layersTotal);
         });
+
+        File.WriteAllText(Path.Combine(o.Output!, RenderedStamp), HtmlExporter.Version);
 
         if (o.DumpJson)
         {
