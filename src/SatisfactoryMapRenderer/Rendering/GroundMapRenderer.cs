@@ -11,41 +11,48 @@ namespace SatisfactoryMapRenderer.Rendering;
 /// shape of the terrain. The same picture the 3D view draws on its terrain, computed here pixel by pixel
 /// so that it can be as large as wanted.
 /// </summary>
-public static class GroundMapRenderer
+public sealed class GroundMapRenderer
 {
     /// <summary>Larger than this, the picture no longer fits into one bitmap and is written as PPM instead.</summary>
     public const int MaxJpegSize = 16384;
     private const double WideTile = 7.3;
-    private const int StripRows = 256;
+    private const int StripRows = 256, FallbackMapSize = 2048;
+    private static readonly double SunLength = Math.Sqrt(0.55 * 0.55 + 0.62 * 0.62 + 0.55 * 0.55);
+    private static readonly double SunX = -0.55 / SunLength, SunUp = 0.62 / SunLength, SunY = -0.55 / SunLength;
 
     /// <summary>A tiling texture, reduced so that one of its pixels is about one pixel of the map.</summary>
     private sealed record Tiling(int Size, float[] Rgb, double Repeat);
 
-    public static bool Render(GameAssets game, string file, int size, Action<string> log)
-    {
-        if (game.Ground is not { } info || game.TerrainHeightsPath is not { } heightsFile || game.MapImagePath is not { } mapFile)
-        {
-            log("  Ground map: the game data has no ground textures, heights or map to make it from");
-            return false;
-        }
-        bool ppm = Path.GetExtension(file).Equals(".ppm", StringComparison.OrdinalIgnoreCase);
-        if (!ppm && size > MaxJpegSize)
-            throw new ArgumentException($"A ground map of more than {MaxJpegSize} px can only be written as .ppm.");
+    private readonly GroundInfo _info;
+    private readonly byte[] _ground, _map;
+    private readonly int _groundWidth, _groundHeight, _mapSize, _heightSize, _cliff;
+    private readonly float[] _slopeX, _slopeY;
+    private readonly SKBitmap[] _textures;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, (Tiling[] Near, Tiling[] Wide)> _tilings = new();
 
-        double world = WorldBounds.Size, pixel = world / size;
+    /// <summary>Reads what the picture is made from; null if the game data lacks any of it.</summary>
+    public static GroundMapRenderer? TryLoad(GameAssets game) =>
+        game.Ground is { } info && game.TerrainHeightsPath is { } heights && game.MapImagePath is { } map ? new GroundMapRenderer(game, info, heights, map) : null;
+
+    private GroundMapRenderer(GameAssets game, GroundInfo info, string heightsFile, string mapFile)
+    {
+        _info = info;
+        double world = WorldBounds.Size;
 
         // which ground lies where
-        using var groundImage = SKBitmap.Decode(Path.Combine(game.GroundDirectory, GameGround.MapFile)).Copy(SKColorType.Rgba8888);
-        int gw = groundImage.Width, gh = groundImage.Height;
-        byte[] ground = groundImage.Bytes;
+        using (var groundImage = SKBitmap.Decode(Path.Combine(game.GroundDirectory, GameGround.MapFile)).Copy(SKColorType.Rgba8888))
+        {
+            (_groundWidth, _groundHeight) = (groundImage.Width, groundImage.Height);
+            _ground = groundImage.Bytes;
+        }
 
         // heights, and from them the slope of the terrain
         var terrain = JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(game.TerrainInfoPath));
         double zAt0 = terrain.GetProperty("zAt0").GetDouble(), zAt1 = terrain.GetProperty("zAt1").GetDouble();
-        using var heightImage = SKBitmap.Decode(heightsFile).Copy(SKColorType.Rgba8888);
-        int hs = heightImage.Width;
-        float[] slopeX = new float[hs * hs], slopeY = new float[hs * hs];
+        using (var heightImage = SKBitmap.Decode(heightsFile).Copy(SKColorType.Rgba8888))
         {
+            int hs = _heightSize = heightImage.Width;
+            float[] slopeX = _slopeX = new float[hs * hs], slopeY = _slopeY = new float[hs * hs];
             byte[] packed = heightImage.Bytes;
             float Height(int x, int y)
             {
@@ -63,24 +70,124 @@ public static class GroundMapRenderer
             });
         }
 
-        // the in-game map, for everything beyond the landscape
-        using var mapImage = SKBitmap.Decode(mapFile).Copy(SKColorType.Rgba8888);
-        int ms = mapImage.Width, mh = mapImage.Height;
-        byte[] map = mapImage.Bytes;
-
-        // the ground textures, fine and in wide repetitions as in the 3D view
-        var near = new Tiling[info.Layers.Length];
-        var wide = new Tiling[info.Layers.Length];
-        for (int l = 0; l < info.Layers.Length; l++)
+        // the in-game map, for everything beyond the landscape; a small copy is enough for that
+        using (var full = SKBitmap.Decode(mapFile))
+        using (var small = full.Resize(new SKImageInfo(FallbackMapSize, FallbackMapSize, SKColorType.Rgba8888, SKAlphaType.Opaque), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear)))
         {
-            using var texture = SKBitmap.Decode(Path.Combine(game.GroundDirectory, info.Layers[l]));
-            near[l] = Reduce(texture, info.Tile, pixel);
-            wide[l] = Reduce(texture, info.Tile * WideTile, pixel);
+            _mapSize = FallbackMapSize;
+            _map = small.Bytes;
         }
-        int cliff = Array.IndexOf(info.Layers, "cliff.jpg");
 
-        double sunLength = Math.Sqrt(0.55 * 0.55 + 0.62 * 0.62 + 0.55 * 0.55);
-        double sunX = -0.55 / sunLength, sunUp = 0.62 / sunLength, sunY = -0.55 / sunLength;
+        _textures = [.. info.Layers.Select(layer => SKBitmap.Decode(Path.Combine(game.GroundDirectory, layer)))];
+        _cliff = Array.IndexOf(info.Layers, "cliff.jpg");
+    }
+
+    /// <summary>The ground textures for a map of this many cm per pixel: fine, and in wide repetitions as in the 3D view.</summary>
+    private (Tiling[] Near, Tiling[] Wide) Tilings(double pixel) => _tilings.GetOrAdd((long)Math.Round(pixel * 1000), _ =>
+        ([.. _textures.Select(t => Reduce(t, _info.Tile, pixel))], [.. _textures.Select(t => Reduce(t, _info.Tile * WideTile, pixel))]));
+
+    /// <summary>
+    /// Draws a part of the world: <paramref name="rows"/> rows of <paramref name="width"/> pixels of
+    /// <paramref name="pixel"/> cm, the first one at the world position given, as red, green, blue.
+    /// </summary>
+    public void RenderArea(double originX, double firstY, double pixel, int width, int rows, byte[] rgb, bool parallel = true)
+    {
+        var (near, wide) = Tilings(pixel);
+        double world = WorldBounds.Size;
+        void Row(int row)
+        {
+            Span<float> c = stackalloc float[3], t = stackalloc float[3];
+            double wy = firstY + (row + 0.5) * pixel;
+            for (int x = 0; x < width; x++)
+            {
+                double wx = originX + (x + 0.5) * pixel;
+
+                // the in-game map here, and whether it shows sea
+                double mx = (wx - WorldBounds.MinX) / world * _mapSize - 0.5, my = (wy - WorldBounds.MinY) / world * _mapSize - 0.5;
+                int m0 = (Math.Clamp((int)Math.Round(my), 0, _mapSize - 1) * _mapSize + Math.Clamp((int)Math.Round(mx), 0, _mapSize - 1)) * 4;
+                float fr = _map[m0] / 255f, fg = _map[m0 + 1] / 255f, fb = _map[m0 + 2] / 255f;
+                float beyondDepth = fb > fr * 1.12f && fg > fr ? 3000f : 0f;
+
+                // the four samples of the ground map around the point, blended
+                double gx = (wx - _info.MinX) / _info.Cell, gy = (wy - _info.MinY) / _info.Cell;
+                int ix = (int)Math.Floor(gx), iy = (int)Math.Floor(gy);
+                float tx = (float)(gx - ix), ty = (float)(gy - iy);
+                float r = 0, g = 0, b = 0, depth = 0;
+                for (int k = 0; k < 4; k++)
+                {
+                    int sx = ix + (k & 1), sy = iy + (k >> 1);
+                    float weight = ((k & 1) == 0 ? 1 - tx : tx) * ((k >> 1) == 0 ? 1 - ty : ty);
+                    if (weight <= 0)
+                        continue;
+                    int firstLayer = 15, secondLayer = 15, share = 255, steps = 0;
+                    if (sx >= 0 && sy >= 0 && sx < _groundWidth && sy < _groundHeight)
+                    {
+                        int o = (sy * _groundWidth + sx) * 4;
+                        (firstLayer, secondLayer, share, steps) = (_ground[o] >> 4, _ground[o] & 15, _ground[o + 1], _ground[o + 2]);
+                    }
+                    if (firstLayer >= _info.Layers.Length)
+                    {
+                        r += fr * weight; g += fg * weight; b += fb * weight;
+                        depth += beyondDepth * weight;
+                        continue;
+                    }
+                    Sample(near[firstLayer], wide[firstLayer], wx, wy, c);
+                    if (secondLayer < _info.Layers.Length && share < 255)
+                    {
+                        Sample(near[secondLayer], wide[secondLayer], wx, wy, t);
+                        float s = share / 255f;
+                        for (int i = 0; i < 3; i++)
+                            c[i] = t[i] + (c[i] - t[i]) * s;
+                    }
+                    r += c[0] * weight; g += c[1] * weight; b += c[2] * weight;
+                    depth += (float)(steps * _info.DepthStep) * weight;
+                }
+
+                // the shape of the terrain: cliffs on steep faces, light and shade
+                double px = (wx - WorldBounds.MinX) / world * (_heightSize - 1), py = (wy - WorldBounds.MinY) / world * (_heightSize - 1);
+                float slX = Bilinear(_slopeX, _heightSize, px, py), slY = Bilinear(_slopeY, _heightSize, px, py);
+                float length = MathF.Sqrt(slX * slX + slY * slY + 1), up = 1 / length;
+                float steep = _cliff < 0 ? 0 : Smooth(0.80f, 0.60f, up);
+                if (steep > 0)
+                {
+                    Sample(near[_cliff], wide[_cliff], wx, wy, c);
+                    r += (c[0] * 1.3f - r) * steep; g += (c[1] * 1.3f - g) * steep; b += (c[2] * 1.3f - b) * steep;
+                }
+                depth *= Smooth(0.75f, 0.93f, up);
+                if (depth > 0)
+                {
+                    float deep = Smooth(0, 1500, depth), cover = Math.Clamp(0.30f + depth / 500f, 0, 0.93f);
+                    r += (0.16f + (0.04f - 0.16f) * deep - r) * cover;
+                    g += (0.40f + (0.17f - 0.40f) * deep - g) * cover;
+                    b += (0.44f + (0.27f - 0.44f) * deep - b) * cover;
+                }
+                float light = (float)(0.42 + 0.78 * Math.Max((-slX * SunX + SunUp - slY * SunY) / length, 0) + 0.12 * up);
+
+                int at = (row * width + x) * 3;
+                rgb[at] = (byte)Math.Clamp(r * light * 255f + 0.5f, 0, 255);
+                rgb[at + 1] = (byte)Math.Clamp(g * light * 255f + 0.5f, 0, 255);
+                rgb[at + 2] = (byte)Math.Clamp(b * light * 255f + 0.5f, 0, 255);
+            }
+        }
+        if (parallel)
+            Parallel.For(0, rows, Row);
+        else
+            for (int row = 0; row < rows; row++)
+                Row(row);
+    }
+
+    /// <summary>The whole world as one picture of <paramref name="size"/> × <paramref name="size"/> px.</summary>
+    public static bool Render(GameAssets game, string file, int size, Action<string> log)
+    {
+        if (TryLoad(game) is not { } source)
+        {
+            log("  Ground map: the game data has no ground textures, heights or map to make it from");
+            return false;
+        }
+        bool ppm = Path.GetExtension(file).Equals(".ppm", StringComparison.OrdinalIgnoreCase);
+        if (!ppm && size > MaxJpegSize)
+            throw new ArgumentException($"A ground map of more than {MaxJpegSize} px can only be written as .ppm.");
+        double pixel = WorldBounds.Size / size;
 
         using var output = ppm ? File.Create(file) : null;
         output?.Write(System.Text.Encoding.ASCII.GetBytes($"P6\n{size} {size}\n255\n"));
@@ -89,83 +196,8 @@ public static class GroundMapRenderer
         byte[] strip = new byte[size * StripRows * 3];
         for (int top = 0; top < size; top += StripRows)
         {
-            int rows = Math.Min(StripRows, size - top), first = top;
-            Parallel.For(0, rows, row =>
-            {
-                Span<float> c = stackalloc float[3], t = stackalloc float[3];
-                double wy = WorldBounds.MinY + (first + row + 0.5) * pixel;
-                for (int x = 0; x < size; x++)
-                {
-                    double wx = WorldBounds.MinX + (x + 0.5) * pixel;
-
-                    // the in-game map here, and whether it shows sea
-                    double mx = (x + 0.5) / size * ms - 0.5, my = (first + row + 0.5) / size * mh - 0.5;
-                    int m0 = (Math.Clamp((int)Math.Round(my), 0, mh - 1) * ms + Math.Clamp((int)Math.Round(mx), 0, ms - 1)) * 4;
-                    float fr = map[m0] / 255f, fg = map[m0 + 1] / 255f, fb = map[m0 + 2] / 255f;
-                    float beyondDepth = fb > fr * 1.12f && fg > fr ? 3000f : 0f;
-
-                    // the four samples of the ground map around the point, blended
-                    double gx = (wx - info.MinX) / info.Cell, gy = (wy - info.MinY) / info.Cell;
-                    int ix = (int)Math.Floor(gx), iy = (int)Math.Floor(gy);
-                    float tx = (float)(gx - ix), ty = (float)(gy - iy);
-                    float r = 0, g = 0, b = 0, depth = 0;
-                    for (int k = 0; k < 4; k++)
-                    {
-                        int sx = ix + (k & 1), sy = iy + (k >> 1);
-                        float weight = ((k & 1) == 0 ? 1 - tx : tx) * ((k >> 1) == 0 ? 1 - ty : ty);
-                        if (weight <= 0)
-                            continue;
-                        int firstLayer = 15, secondLayer = 15, share = 255, steps = 0;
-                        if (sx >= 0 && sy >= 0 && sx < gw && sy < gh)
-                        {
-                            int o = (sy * gw + sx) * 4;
-                            (firstLayer, secondLayer, share, steps) = (ground[o] >> 4, ground[o] & 15, ground[o + 1], ground[o + 2]);
-                        }
-                        if (firstLayer >= info.Layers.Length)
-                        {
-                            r += fr * weight; g += fg * weight; b += fb * weight;
-                            depth += beyondDepth * weight;
-                            continue;
-                        }
-                        Sample(near[firstLayer], wide[firstLayer], wx, wy, c);
-                        if (secondLayer < info.Layers.Length && share < 255)
-                        {
-                            Sample(near[secondLayer], wide[secondLayer], wx, wy, t);
-                            float s = share / 255f;
-                            for (int i = 0; i < 3; i++)
-                                c[i] = t[i] + (c[i] - t[i]) * s;
-                        }
-                        r += c[0] * weight; g += c[1] * weight; b += c[2] * weight;
-                        depth += (float)(steps * info.DepthStep) * weight;
-                    }
-
-                    // the shape of the terrain: cliffs on steep faces, light and shade
-                    double px = (wx - WorldBounds.MinX) / world * (hs - 1), py = (wy - WorldBounds.MinY) / world * (hs - 1);
-                    float slX = Bilinear(slopeX, hs, px, py), slY = Bilinear(slopeY, hs, px, py);
-                    float length = MathF.Sqrt(slX * slX + slY * slY + 1), up = 1 / length;
-                    float steep = cliff < 0 ? 0 : Smooth(0.80f, 0.60f, up);
-                    if (steep > 0)
-                    {
-                        Sample(near[cliff], wide[cliff], wx, wy, c);
-                        r += (c[0] * 1.3f - r) * steep; g += (c[1] * 1.3f - g) * steep; b += (c[2] * 1.3f - b) * steep;
-                    }
-                    depth *= Smooth(0.75f, 0.93f, up);
-                    if (depth > 0)
-                    {
-                        float deep = Smooth(0, 1500, depth), cover = Math.Clamp(0.30f + depth / 500f, 0, 0.93f);
-                        r += (0.16f + (0.04f - 0.16f) * deep - r) * cover;
-                        g += (0.40f + (0.17f - 0.40f) * deep - g) * cover;
-                        b += (0.44f + (0.27f - 0.44f) * deep - b) * cover;
-                    }
-                    float light = (float)(0.42 + 0.78 * Math.Max((-slX * sunX + sunUp - slY * sunY) / length, 0) + 0.12 * up);
-
-                    int at = (row * size + x) * 3;
-                    strip[at] = (byte)Math.Clamp(r * light * 255f + 0.5f, 0, 255);
-                    strip[at + 1] = (byte)Math.Clamp(g * light * 255f + 0.5f, 0, 255);
-                    strip[at + 2] = (byte)Math.Clamp(b * light * 255f + 0.5f, 0, 255);
-                }
-            });
-
+            int rows = Math.Min(StripRows, size - top);
+            source.RenderArea(WorldBounds.MinX, WorldBounds.MinY + top * pixel, pixel, size, rows, strip);
             if (output is not null)
             {
                 output.Write(strip, 0, rows * size * 3);

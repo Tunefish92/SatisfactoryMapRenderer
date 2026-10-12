@@ -7,7 +7,47 @@ using SkiaSharp;
 namespace SatisfactoryMapRenderer.Rendering;
 
 /// <param name="BackgroundImage">Explicit map image; otherwise the game's own map is used when available.</param>
-public sealed record ExportOptions(string OutputDirectory, int MaxZoom, string? BackgroundImage, GameAssets? Game = null, string? ReliefImage = null, string? GroundImage = null);
+public sealed record ExportOptions(string OutputDirectory, int MaxZoom, string? BackgroundImage, GameAssets? Game = null, string? ReliefImage = null, string? GroundImage = null,
+    BaseMapTiles? BaseMaps = null);
+
+/// <summary>
+/// Base maps that were cut into tiles beforehand (in the Docker image: when it was built), so that a render
+/// has nothing to do for them and the browser just loads them.
+/// </summary>
+/// <param name="Directory">Holds tiles/&lt;layer&gt;/z/x/y.jpg and <see cref="IndexFile"/>.</param>
+/// <param name="MaxZoom">Layer id → deepest zoom level it has tiles for.</param>
+public sealed record BaseMapTiles(string Directory, IReadOnlyDictionary<string, int> MaxZoom)
+{
+    public const string IndexFile = "basemaps.json", UrlPrefix = "basemaps/";
+
+    public static BaseMapTiles? TryLoad(string directory)
+    {
+        try
+        {
+            string index = Path.Combine(directory, IndexFile);
+            return File.Exists(index) && System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(index)) is { Count: > 0 } zooms
+                ? new BaseMapTiles(Path.GetFullPath(directory), zooms) : null;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Cuts the game data's maps into tiles: the ground map, the in-game map and the relief map.</summary>
+    public static void Export(GameAssets game, string directory, int maxZoom, Action<string> log)
+    {
+        if (System.IO.Directory.Exists(Path.Combine(directory, "tiles")))
+            System.IO.Directory.Delete(Path.Combine(directory, "tiles"), recursive: true);
+        System.IO.Directory.CreateDirectory(directory);
+        var renderer = new TileRenderer(directory, maxZoom, log);
+        var zooms = new Dictionary<string, int>();
+        foreach (var (layer, image) in new[] { (Layers.Ground, game.GroundMapPath), (Layers.Background, game.MapImagePath), (Layers.Relief, game.ReliefImagePath) })
+            if (image is not null)
+                zooms[layer.Id] = renderer.RenderImageFile(layer, image, "jpg").MaxNativeZoom;
+        File.WriteAllText(Path.Combine(directory, IndexFile), System.Text.Json.JsonSerializer.Serialize(zooms));
+    }
+}
 
 /// <summary>Renders all tile layers and writes the HTML viewer.</summary>
 public static class MapExporter
@@ -36,9 +76,22 @@ public static class MapExporter
         if (Directory.Exists(Path.Combine(tilesDir, "realistic")))
             Directory.Delete(Path.Combine(tilesDir, "realistic"), recursive: true);
         string? groundPath = options.GroundImage ?? options.Game?.GroundMapPath;
-        foreach (var (layer, image) in new[] { (Layers.Ground, groundPath), (Layers.Background, backgroundPath), (Layers.Relief, reliefPath) })
+        foreach (var (layer, image, own) in new[]
+                 {
+                     (Layers.Ground, groundPath, options.GroundImage is not null), (Layers.Background, backgroundPath, options.BackgroundImage is not null),
+                     (Layers.Relief, reliefPath, options.ReliefImage is not null),
+                 })
         {
             string layerDir = Path.Combine(tilesDir, layer.Id);
+            // Tiles cut beforehand are used as they are, unless the user brought an image of their own.
+            if (!own && options.BaseMaps is { } ready && ready.MaxZoom.TryGetValue(layer.Id, out int deepest))
+            {
+                if (Directory.Exists(layerDir))
+                    Directory.Delete(layerDir, recursive: true);
+                tiles[layer.Id] = new TileSet(layer.Id, Math.Min(deepest, options.MaxZoom), "jpg", [], BaseMapTiles.UrlPrefix + layer.Id);
+                log($"  {layer.Title}: bundled tiles");
+                continue;
+            }
             if (image is null)
             {
                 if (Directory.Exists(layerDir))

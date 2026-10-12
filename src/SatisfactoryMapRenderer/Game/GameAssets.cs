@@ -155,7 +155,7 @@ public sealed class GameAssets : IDisposable
         if ((ReliefImagePath is null || TerrainHeightsPath is null) && _game is not null)
             CreateRelief();
         if (ReliefImagePath is { } relief)
-            File.Copy(relief, Path.Combine(directory, ReliefFileName), overwrite: true);
+            CopyUnlessLarger(relief, Path.Combine(directory, ReliefFileName));
         if (Models is null && _game is not null)
             CreateModels();
         if (Models is not null)
@@ -181,7 +181,7 @@ public sealed class GameAssets : IDisposable
                 File.Copy(file, Path.Combine(ground, Path.GetFileName(file)));
         }
         if (GroundMapPath is { } groundMap)
-            File.Copy(groundMap, Path.Combine(directory, GroundMapFileName), overwrite: true);
+            CopyUnlessLarger(groundMap, Path.Combine(directory, GroundMapFileName));
         if (TerrainHeightsPath is { } heights)
         {
             File.Copy(heights, Path.Combine(directory, HeightsFileName), overwrite: true);
@@ -225,6 +225,25 @@ public sealed class GameAssets : IDisposable
         ExtractMapIcons(archive);
         _log($"  Icons: {Directory.GetFiles(IconDirectory, "*.png").Length} ({sw.Elapsed.TotalSeconds:0.0}s)");
         return data;
+    }
+
+    /// <summary>
+    /// The project keeps the relief and ground map in a far higher resolution than an export makes them
+    /// (the relief upscaled, the ground map drawn at 32768 px); an export must not replace those.
+    /// </summary>
+    private void CopyUnlessLarger(string source, string target)
+    {
+        if (File.Exists(target))
+        {
+            using var existing = SKCodec.Create(target);
+            using var made = SKCodec.Create(source);
+            if (existing is not null && made is not null && existing.Info.Width > made.Info.Width)
+            {
+                _log($"  Kept {Path.GetFileName(target)} ({existing.Info.Width} px; the export's is {made.Info.Width} px)");
+                return;
+            }
+        }
+        File.Copy(source, target, overwrite: true);
     }
 
     private void CreateGround()

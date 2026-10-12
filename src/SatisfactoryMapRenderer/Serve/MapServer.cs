@@ -21,7 +21,7 @@ namespace SatisfactoryMapRenderer.Serve;
 /// which is only allowed while the server listens on localhost.
 /// </param>
 public sealed class MapServer(string outputDirectory, string stateDirectory, int port, Action<string, Action<string, int>> render, Action<string> log,
-    string bindAddress = MapServer.Localhost, string? adminPassword = null)
+    string bindAddress = MapServer.Localhost, string? adminPassword = null, string? baseMapsDirectory = null)
 {
     public const string Localhost = "localhost";
     private const string SessionCookie = "smr_session";
@@ -56,6 +56,7 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly string _root = Path.GetFullPath(outputDirectory) + Path.DirectorySeparatorChar;
+    private readonly string? _baseMaps = baseMapsDirectory is null ? null : Path.Combine(Path.GetFullPath(baseMapsDirectory), "tiles") + Path.DirectorySeparatorChar;
     private readonly SemaphoreSlim _busy = new(1, 1);
     private SaveSource _source = SaveSource.Load(Path.Combine(stateDirectory, "source.json"));
 
@@ -247,10 +248,26 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
     private void ServeFile(HttpListenerRequest request, HttpListenerResponse response, string urlPath)
     {
         string relative = Uri.UnescapeDataString(urlPath).TrimStart('/');
-        string file = Path.GetFullPath(Path.Combine(_root, relative.Length == 0 ? "index.html" : relative));
-        if (!file.StartsWith(_root, StringComparison.Ordinal) || !File.Exists(file))
+        string root = _root;
+        // Base maps that came cut into tiles are not part of a map's folder; every map uses the same ones.
+        bool shared = _baseMaps is not null && relative.StartsWith(Rendering.BaseMapTiles.UrlPrefix, StringComparison.Ordinal);
+        if (shared)
+            (root, relative) = (_baseMaps!, relative[Rendering.BaseMapTiles.UrlPrefix.Length..]);
+        string file = Path.GetFullPath(Path.Combine(root, relative.Length == 0 ? "index.html" : relative));
+        if (!file.StartsWith(root, StringComparison.Ordinal) || !File.Exists(file))
         {
             response.StatusCode = 404;
+            return;
+        }
+        if (shared)
+        {
+            // they only change with the app itself
+            response.Headers["Cache-Control"] = "public, max-age=86400";
+            response.ContentType = ContentTypes.GetValueOrDefault(Path.GetExtension(file), "application/octet-stream");
+            using var tile = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            response.ContentLength64 = tile.Length;
+            if (request.HttpMethod != "HEAD")
+                tile.CopyTo(response.OutputStream);
             return;
         }
 

@@ -22,6 +22,10 @@ internal static class Program
               --maps <dir>          Folder with game-map.jpg, ground-map.jpg and relief-map.jpg. They replace the
                                     game's own map, ground map and relief map (default: maps in the current
                                     directory)
+              --base-maps <dir>     Base maps that were cut into tiles beforehand with --export-base-maps; a map
+                                    then uses those instead of cutting the images again (server mode only)
+              --export-base-maps <dir>
+                                    Only cut the game data's maps (ground, in-game, relief) into tiles there and stop
               --render-ground-map <file>
                                     Only draw the ground map (the world from above without any factory) into
                                     this .jpg, or .ppm for sizes above 16384, and stop
@@ -61,6 +65,8 @@ internal static class Program
         public string? Relief { get; set; }
         public string? Ground { get; set; }
         public string? RenderGroundMap { get; set; }
+        public string? BaseMapsDirectory { get; set; }
+        public string? ExportBaseMaps { get; set; }
         public int GroundMapSize { get; set; } = GroundMapRenderer.MaxJpegSize;
         public string MapsDirectory { get; set; } = "maps";
         public bool DumpJson { get; set; }
@@ -170,6 +176,12 @@ internal static class Program
                 case "--game-data":
                     o.GameDataDirectory = Next();
                     break;
+                case "--base-maps":
+                    o.BaseMapsDirectory = Path.GetFullPath(Next());
+                    break;
+                case "--export-base-maps":
+                    o.ExportBaseMaps = Path.GetFullPath(Next());
+                    break;
                 case "--render-ground-map":
                     o.RenderGroundMap = Path.GetFullPath(Next());
                     break;
@@ -191,7 +203,7 @@ internal static class Program
             }
         }
 
-        if (o.RenderGroundMap is not null && savePath is null)
+        if ((o.RenderGroundMap is not null || o.ExportBaseMaps is not null) && savePath is null)
         {
             o.SavePath = ExportOnly;
             return o;
@@ -264,6 +276,18 @@ internal static class Program
             if (o.SavePath == ExportOnly)
                 return;
         }
+        if (o.ExportBaseMaps is not null)
+        {
+            if (game is null)
+            {
+                Console.Error.WriteLine("--export-base-maps needs game data (--game-data <dir>).");
+                Environment.ExitCode = 1;
+                return;
+            }
+            BaseMapTiles.Export(game, o.ExportBaseMaps, o.MaxZoom, Console.WriteLine);
+            if (o.SavePath == ExportOnly)
+                return;
+        }
         if (o.ServePort is { } port)
         {
             Serve(o, game, port);
@@ -281,7 +305,7 @@ internal static class Program
             var sw = Stopwatch.StartNew();
             Render(o, savePath, game, progress);
             Console.WriteLine($"Done in {sw.Elapsed.TotalSeconds:0.0}s.");
-        }, Console.WriteLine, o.Bind, o.AdminPassword);
+        }, Console.WriteLine, o.Bind, o.AdminPassword, BaseMaps(o)?.Directory);
 
         if (o.SavePath.Length > 0)
         {
@@ -317,6 +341,9 @@ internal static class Program
             Environment.ExitCode = 1;
         }
     }
+
+    /// <summary>The base maps cut into tiles beforehand, if --base-maps names a folder that has them.</summary>
+    private static BaseMapTiles? BaseMaps(Options o) => o.BaseMapsDirectory is null ? null : BaseMapTiles.TryLoad(o.BaseMapsDirectory);
 
     /// <summary>Names the version that rendered a map, so that a newer version knows the map is not its own.</summary>
     private const string RenderedStamp = ".rendered";
@@ -389,7 +416,7 @@ internal static class Program
         // The exporter reports each finished tile layer ("  Buildings: ... tiles"); those lines drive the bar.
         int layersDone = 0, layersTotal = Layers.All.Count(l => l.Kind == LayerKind.Raster);
         progress?.Invoke("Drawing the map", 25);
-        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Relief, o.Ground), message =>
+        MapExporter.Export(world, new ExportOptions(o.Output!, o.MaxZoom, o.Background, game, o.Relief, o.Ground, o.ServePort is null ? null : BaseMaps(o)), message =>
         {
             Console.WriteLine(message);
             if (message.StartsWith("  ", StringComparison.Ordinal) && message.Contains(':'))

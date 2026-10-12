@@ -555,6 +555,8 @@ public static class HtmlExporter
                 w.WriteStartObject("tiles");
                 w.WriteString("ext", tileSet.Extension);
                 w.WriteNumber("maxNativeZoom", tileSet.MaxNativeZoom);
+                if (tileSet.Path is not null)
+                    w.WriteString("path", tileSet.Path); // all tiles exist, in a folder shared by every map
                 w.WriteStartArray("list");
                 foreach (var tile in tileSet.Tiles.Order())
                     w.WriteStringValue(tile);

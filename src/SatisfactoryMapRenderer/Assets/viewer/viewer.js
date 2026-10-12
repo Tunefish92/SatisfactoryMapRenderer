@@ -186,10 +186,13 @@
       L.GridLayer.prototype.initialize.call(this, options);
       this.layer = layer;
       this.available = new Set(layer.tiles.list);
+      // a base map that came cut into tiles has every tile, in a folder of its own
+      this.whole = !!layer.tiles.path;
+      this.path = layer.tiles.path || `tiles/${layer.id}`;
     },
     createTile(coords, done) {
       const key = `${coords.z}/${coords.x}/${coords.y}`;
-      if (!this.available.has(key)) {
+      if (!this.whole && !this.available.has(key)) {
         const empty = document.createElement('div');
         setTimeout(() => done(null, empty), 0);
         return empty;
@@ -199,7 +202,7 @@
       img.decoding = 'async';
       img.onload = () => done(null, img);
       img.onerror = () => done(null, img);
-      img.src = `tiles/${this.layer.id}/${key}.${this.layer.tiles.ext}`;
+      img.src = `${this.path}/${key}.${this.layer.tiles.ext}`;
       return img;
     },
   });
@@ -211,7 +214,7 @@
 
   D.layers.forEach((layer, index) => {
     if (layer.kind === 'raster') {
-      if (!layer.tiles || layer.tiles.list.length === 0) return;
+      if (!layer.tiles || (layer.tiles.list.length === 0 && !layer.tiles.path)) return;
       handles[layer.id] = {
         leaflet: new SparseTiles(layer, {
           tileSize: 256,

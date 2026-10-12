@@ -2,6 +2,9 @@
 
 ## 0.2.2 – 2026-10-12
 
+* Sharp base maps out of the box: the ground map and the relief map are bundled at 32768 px (about 23 cm per
+  pixel) instead of 8192 px. In the Docker image they come cut into tiles, so a render has nothing to do for
+  them and the browser just loads them. The image grows by about 300 MB.
 * After an update, the page shows once per browser what is new: every version since the one seen last, taken
   from this changelog. It also says whether the map still has to be rendered again to show it.
 

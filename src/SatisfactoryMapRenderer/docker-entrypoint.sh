@@ -34,7 +34,7 @@ run_app() {
     # folder always wins over the bundled one.
     # An export made by an older version of this app lacks what newer versions use (ground map, 3D
     # models): it is made again from /game, or set aside in favour of the bundled game data.
-    if [ -f "$DATA_PATH/gamedata/gamedata.json" ] && [ ! -f "$DATA_PATH/gamedata/ground-map.jpg" ]; then
+    if [ -f "$DATA_PATH/gamedata/gamedata.json" ] && [ ! -d "$DATA_PATH/gamedata/ground" ]; then
         if [ -d /game/FactoryGame ]; then
             echo "The game data in $DATA_PATH/gamedata was exported by an older version; exporting it again."
             rm -f "$DATA_PATH/gamedata/gamedata.json"
@@ -55,7 +55,7 @@ run_app() {
         GAME_DATA=/app/gamedata
     fi
 
-    exec "$@" --serve 8080 --bind '*' -o "$DATA_PATH/map" --cache "$DATA_PATH/cache" --game-data "$GAME_DATA" \
+    exec "$@" --serve 8080 --bind '*' -o "$DATA_PATH/map" --cache "$DATA_PATH/cache" --game-data "$GAME_DATA" --base-maps /app/basemaps \
         -z "${SMR_MAX_ZOOM:-9}" $SMR_EXTRA_ARGS
 }
 

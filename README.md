@@ -213,8 +213,9 @@ then on is used instead of the bundled data. The mount can be removed again afte
 
 Optional images in `map-data/maps/` replace or add base maps, each covering the whole in-game map area:
 `game-map.jpg` (used instead of the bundled in-game map), `ground-map.jpg` (used instead of the bundled ground
-map, for example a larger one made with `--render-ground-map`) and `relief-map.jpg` (used instead of the bundled
-relief map).
+map) and `relief-map.jpg` (used instead of the bundled relief map). The bundled ground and relief maps are
+32768 px wide (about 23 cm per pixel) and come cut into tiles with the image, so nothing has to be computed
+for them; an image of your own is cut into tiles when the map is rendered.
 
 ## Settings
 

@@ -17,6 +17,14 @@ COPY CHANGELOG.md ./
 RUN dotnet publish src/SatisfactoryMapRenderer/SatisfactoryMapRenderer.csproj -c Release -o /app/publish --no-restore \
  && find /app/publish/runtimes -mindepth 1 -maxdepth 1 ! -name linux-x64 ! -name linux-arm64 ! -name linux ! -name unix -exec rm -rf {} +
 
+# The base maps (ground map and relief map at 32768 px, in-game map at 8192 px) are cut into tiles
+# once, here, so that a running container has nothing to compute for them: the browser just loads
+# the tiles. The two large images themselves are then not needed in the image.
+COPY gamedata/ /gamedata/
+RUN HOME=/tmp dotnet /app/publish/SatisfactoryMapRenderer.dll --export-base-maps /basemaps --game-data /gamedata --cache /tmp/cache \
+ && test -f /basemaps/basemaps.json \
+ && rm /gamedata/ground-map.jpg /gamedata/relief.jpg
+
 FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
 WORKDIR /app
 
@@ -39,7 +47,8 @@ RUN apt-get update \
 COPY --from=build /app/publish .
 # The game's icons, names, level data and in-game map, so the map works without a game
 # installation. They are Coffee Stain Studios' assets, see gamedata/README.md.
-COPY gamedata/ /app/gamedata/
+COPY --from=build /gamedata/ /app/gamedata/
+COPY --from=build /basemaps/ /app/basemaps/
 COPY src/SatisfactoryMapRenderer/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # Strip CR in case the script was checked out with Windows line endings. The `map-renderer` command
 # runs the renderer's own commands, e.g. `docker exec satisfactory-map map-renderer --help`.

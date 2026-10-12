@@ -14,3 +14,7 @@ The Docker image ships this folder so the map works without a game installation.
 and are included here only so that this fan-made tool can display save games of their game. This project is not
 affiliated with or endorsed by Coffee Stain Studios. If you are the rights holder and want them removed, please
 open an issue.
+
+`ground-map.jpg` and `relief.jpg` are kept here at 32768 px: the ground map drawn with `--render-ground-map`,
+the relief map upscaled from the export's 8192 px. An export does not replace them with its smaller ones. The
+Docker build cuts them into tiles (`--export-base-maps`).

@@ -4,7 +4,11 @@ using SkiaSharp;
 
 namespace SatisfactoryMapRenderer.Rendering;
 
-public sealed record TileSet(string LayerId, int MaxNativeZoom, string Extension, IReadOnlyCollection<string> Tiles);
+/// <param name="Path">
+/// For a base map that was cut into tiles beforehand: where the viewer finds them (every tile down to
+/// <paramref name="MaxNativeZoom"/> exists). Null for tiles written into the map's own folder.
+/// </param>
+public sealed record TileSet(string LayerId, int MaxNativeZoom, string Extension, IReadOnlyCollection<string> Tiles, string? Path = null);
 
 /// <summary>
 /// Renders map features into a Leaflet/XYZ tile pyramid. Zoom 0 is one 256 px tile covering <see cref="WorldBounds"/>.
