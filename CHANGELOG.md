@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+* 3D view: the planes the game draws smoke, fog and other effects on are no longer part of the models. The
+  Fuel-Powered Generator and the Nuclear Power Plant showed one as a grey slab 95 m high.
+* README: how to get the dedicated server's API token.
+
 ## 0.2.2 – 2026-10-12
 
 * Sharp base maps out of the box: the ground map and the relief map are bundled at 32768 px (about 23 cm per

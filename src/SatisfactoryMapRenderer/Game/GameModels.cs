@@ -118,7 +118,7 @@ public static class GameModels
     private const int WantedTriangles = 250, RepeatedTriangles = 90, DetailedTriangles = 5000;
 
     /// <summary>Helper geometry that is not part of what a building looks like.</summary>
-    private static readonly string[] Ignored = ["Fog", "Clearance", "Hologram", "Arrow", "Collision", "Decal", "Snap", "Preview", "Guide", "Glow", "Trigger"];
+    private static readonly string[] Ignored = ["Fog", "Clearance", "Hologram", "Arrow", "Collision", "Decal", "Snap", "Preview", "Guide", "Glow", "Trigger", "Smoke"];
 
     private static readonly string[] MeshComponentTypes = ["StaticMeshComponent", "FGColoredInstanceMeshProxy", "InstancedStaticMeshComponent", "FGProductionIndicatorInstanceComponent"];
 
@@ -130,7 +130,11 @@ public static class GameModels
     /// <summary>Materials whose texture is black or dark where the game puts the paint.</summary>
     private static readonly string[] PaintedMaterials = ["MMU_Pipeline", "MMU_WaterPump"];
     private static readonly string[] StandIns = ["_IMP", "Imposter", "FactoryLod"];
-    private static readonly string[] SkippedMaterials = ["Decal", "_IMP", "Imposter", "FactoryLod", "Hologram"];
+    /// <summary>
+    /// Not surfaces of the building: decals, stand-ins, and the planes the game draws smoke, fog and other
+    /// effects on, which would show as solid slabs here.
+    /// </summary>
+    private static readonly string[] SkippedMaterials = ["Decal", "_IMP", "Imposter", "FactoryLod", "Hologram", "Smoke", "Effect", "InputFog"];
 
     private static readonly string[] AlbedoNames = ["Albedo", "BaseColor", "Base Color", "BC", "Diffuse", "Color", "Albedo_A", "MainTexture", "Texture"];
     private static readonly string[] MaskNames = ["AOMasks", "AO Masks", "AOMask", "AO_Masks"];

@@ -164,8 +164,8 @@ folder, zoom) go into `.env`; see `.env.example`.
 ## Choosing the save game
 
 * **File**: *Browse…* or drop a `.sav` anywhere on the page.
-* **Dedicated server (HTTPS API)**: host, port (7777 by default) and an API token. Create the token in the server
-  console with `server.GenerateAPIToken`. Servers use a self-signed certificate by default, so "Verify
+* **Dedicated server (HTTPS API)**: host, port (7777 by default) and an API token (see
+  [Getting the server's API token](#getting-the-servers-api-token)). Servers use a self-signed certificate by default, so "Verify
   certificate" is off unless you switch it on. With "Save the running game first" the server writes a save named
   `MapRenderer_snapshot` (overwritten each time), so the map shows the current state; otherwise the newest
   existing save is taken. *Check version* shows the server's name, build and game version and whether it is
@@ -177,6 +177,21 @@ folder, zoom) go into `.env`; see `.env.example`.
 
 While a save is loaded, a progress window shows what is happening. Connection settings, including the API token,
 are stored in the data folder (`cache/source.json`), readable by the app's user only.
+
+### Getting the server's API token
+
+The dedicated server hands out the token itself; you ask for it once in the server's console.
+
+1. Start Satisfactory and open **Server Manager** in the main menu.
+2. Select your server and log in with the server's **administrator password**.
+3. Open the **Console** tab, type `server.GenerateAPIToken` and press Enter.
+4. The console prints one long line of text. That whole line is the token: copy it.
+5. In the map, open the *Save game* tab, log in as admin, choose **Dedicated server (HTTPS API)** and paste the
+   token into the *API token* field. *Check version* tells you whether the connection works.
+
+The token does not expire, so this is needed only once. Treat it like a password: it allows managing the
+server, not only reading saves. If the server runs in a container without the game's Server Manager at hand,
+the same command can be typed into the server's own console.
 
 ## Game icons and the in-game map
 
