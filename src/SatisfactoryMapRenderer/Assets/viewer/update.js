@@ -18,11 +18,21 @@
   // ---------------------------------------------------------------- what is new, once after an update
 
   (() => {
-    const data = window.MAP_DATA || {}, changes = renderer.changes || [];
+    const data = window.MAP_DATA || {};
     const seen = store.get('seenVersion', null);
-    // A first visit to a fresh installation has nothing to compare with; a map that already exists has.
+    // Everything since the version this browser saw last. A browser that was never here is only told about
+    // an update the server noted: everything since the version the map came from, or, where that was not
+    // recorded yet, everything of the current line (0.2.x).
+    const current = parse(renderer.version), updated = typeof renderer.updatedFrom === 'string';
+    const since = parse(seen || renderer.updatedFrom);
+    const changes = current && (seen || updated) ? (renderer.changes || []).filter(c => {
+      const v = parse(c.version);
+      if (!v || compare(v, current) > 0 || !c.sections.length) return false;
+      if (since) return compare(v, since) > 0;
+      return v.numbers[0] === current.numbers[0] && v.numbers[1] === current.numbers[1];
+    }) : [];
     // (automated tests switch the window off with smr:news = false)
-    const show = renderer.version && seen !== renderer.version && changes.length && (seen !== null || !data.empty) && store.get('news', true);
+    const show = renderer.version && seen !== renderer.version && changes.length && store.get('news', true);
     if (renderer.version && !show) store.set('seenVersion', renderer.version);
     if (!show) return;
 
@@ -30,9 +40,10 @@
     // the changelog's own emphasis: **bold**, `code`
     const inline = s => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
     $('news-title').textContent = `What is new in version ${renderer.version}`;
-    $('news-body').innerHTML = changes.map(section =>
-      (section.title ? `<h3>${esc(section.title)}</h3>` : '') + `<ul>${section.items.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`).join('');
-    $('news-link').href = `https://github.com/${renderer.repository}/releases/tag/v${renderer.version}`;
+    $('news-body').innerHTML = changes.map(change =>
+      (changes.length > 1 ? `<h3 class="news-version">Version ${esc(change.version)}</h3>` : '') + change.sections.map(section =>
+        (section.title ? `<h3>${esc(section.title)}</h3>` : '') + `<ul>${section.items.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`).join('')).join('');
+    $('news-link').href = `https://github.com/${renderer.repository}/releases`;
 
     // The map itself is only as new as its last render.
     if (!data.empty) {

@@ -684,34 +684,35 @@ public static class HtmlExporter
         }
 
         // Which renderer wrote the viewer, for the footer and the update check against the project's releases.
+        // After an update the server notes which version the map came from ("" if that was not recorded yet).
+        string noted = Path.Combine(outputDirectory, UpdatedFromFile);
+        string? updatedFrom = File.Exists(noted) ? File.ReadAllText(noted).Trim() : null;
         File.WriteAllText(Path.Combine(outputDirectory, "version.js"),
-            $"window.MAP_RENDERER = {JsonSerializer.Serialize(new { version = Version, repository = Repository, changes = Changes(Version) })};\n");
+            $"window.MAP_RENDERER = {JsonSerializer.Serialize(new { version = Version, repository = Repository, updatedFrom, changes = Changes() })};\n");
     }
 
     /// <summary>
-    /// What the changelog says about a version, for the "what is new" window of the viewer: its sections
-    /// (a title, possibly empty, and the entries under it). Empty if the version has no entry.
+    /// The changelog for the "what is new" window of the viewer: the newest versions first, each with its
+    /// sections (a title, possibly empty, and the entries under it).
     /// </summary>
-    internal static List<object> Changes(string version)
+    internal static List<object> Changes()
     {
-        var sections = new List<(string Title, List<string> Items)>();
+        var versions = new List<(string Version, List<(string Title, List<string> Items)> Sections)>();
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Changelog.md");
         if (stream is null)
             return [];
         using var reader = new StreamReader(stream);
-        bool inside = false;
         while (reader.ReadLine() is { } line)
         {
             if (line.StartsWith("## ", StringComparison.Ordinal))
             {
-                if (inside)
-                    break;
                 // "## 0.2.1 – 2026-10-12"
-                inside = line[3..].Split(' ')[0] == version;
+                versions.Add((line[3..].Split(' ')[0], []));
                 continue;
             }
-            if (!inside || line.Trim().Length == 0 || line.StartsWith("```", StringComparison.Ordinal))
+            if (versions.Count == 0 || line.Trim().Length == 0 || line.StartsWith("```", StringComparison.Ordinal))
                 continue;
+            var sections = versions[^1].Sections;
             if (line.StartsWith("### ", StringComparison.Ordinal))
                 sections.Add((line[4..].Trim(), []));
             else if (line.StartsWith("* ", StringComparison.Ordinal) || line.StartsWith("- ", StringComparison.Ordinal))
@@ -723,8 +724,18 @@ public static class HtmlExporter
             else if (sections.Count > 0 && sections[^1].Items.Count > 0)
                 sections[^1].Items[^1] += " " + line.Trim(); // an entry that runs on over several lines
         }
-        return [.. sections.Where(s => s.Items.Count > 0).Select(s => (object)new { title = s.Title, items = s.Items })];
+        return [.. versions.Where(v => char.IsDigit(v.Version.FirstOrDefault())).Take(MaxChangelogVersions).Select(v => (object)new
+        {
+            version = v.Version,
+            sections = v.Sections.Where(s => s.Items.Count > 0).Select(s => new { title = s.Title, items = s.Items }),
+        })];
     }
+
+    /// <summary>Written by the server into a map's folder when it finds a map of another version.</summary>
+    public const string UpdatedFromFile = ".updated-from";
+
+    /// <summary>The viewer only ever shows what is new since the last visit; older history is on GitHub.</summary>
+    private const int MaxChangelogVersions = 8;
 
     /// <summary>GitHub repository whose releases the viewer checks for updates.</summary>
     public const string Repository = "Tunefish92/SatisfactoryMapRenderer";

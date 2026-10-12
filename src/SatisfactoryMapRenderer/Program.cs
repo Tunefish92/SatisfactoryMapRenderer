@@ -292,6 +292,11 @@ internal static class Program
             HtmlExporter.ExportEmpty(o.Output!, o.MaxZoom, game);
         else
         {
+            // What version the map on disk came from, for the viewer's "what is new" window.
+            string stamp = Path.Combine(o.Output!, RenderedStamp);
+            string renderedBy = File.Exists(stamp) ? File.ReadAllText(stamp).Trim() : "";
+            if (renderedBy != HtmlExporter.Version)
+                File.WriteAllText(Path.Combine(o.Output!, HtmlExporter.UpdatedFromFile), renderedBy);
             HtmlExporter.RefreshViewer(o.Output!, game);
             RenderAgainAfterUpdate(o, game);
         }

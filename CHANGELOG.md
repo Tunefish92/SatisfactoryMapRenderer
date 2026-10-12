@@ -2,8 +2,8 @@
 
 ## 0.2.2 – 2026-10-12
 
-* After an update, the page shows once what is new in the installed version, and says whether the map still
-  has to be rendered again to show it.
+* After an update, the page shows once per browser what is new: every version since the one seen last, taken
+  from this changelog. It also says whether the map still has to be rendered again to show it.
 
 ## 0.2.1 – 2026-10-12
 

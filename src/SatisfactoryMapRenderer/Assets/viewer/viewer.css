@@ -1086,3 +1086,5 @@ body.terrain-page { overflow: hidden; }
 .news-card footer a { color: var(--color-primary); font-size: 13px; text-decoration: none; }
 .news-card footer a:hover { text-decoration: underline; }
 .news-card footer button.primary { padding: 9px 22px; font-size: 14px; }
+.news-body h3.news-version { margin: 22px 0 0; padding-bottom: 6px; border-bottom: 1px solid var(--color-border); font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--color-text); }
+.news-body h3.news-version:first-child { margin-top: 12px; }
