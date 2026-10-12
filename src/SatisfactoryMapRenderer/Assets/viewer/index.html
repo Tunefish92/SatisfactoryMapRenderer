@@ -29,6 +29,7 @@
       <button type="button" role="tab" data-tab="layers" aria-selected="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg><span>Layers</span></button>
       <button type="button" role="tab" data-tab="save" aria-selected="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h11l3 3v15H5Z"/><path d="M8 3v6h7V3"/><rect x="8" y="13" width="8" height="5"/></svg><span>Save game</span></button>
       <button type="button" role="tab" data-tab="stats" aria-selected="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M21 20H3"/></svg><span>Statistics</span></button>
+      <button type="button" role="tab" data-tab="server" aria-selected="false" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg><span>Server</span></button>
       <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg><span>Settings</span></button>
     </nav>
     <div id="sidebar-content">
@@ -126,6 +127,37 @@
           <h2>Object counts</h2>
           <input id="count-filter" type="search" placeholder="Filter, e.g. constructor…" autocomplete="off">
           <table id="counts"></table>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-panel="server" role="tabpanel" hidden>
+        <section class="card">
+          <h2>Game server <span id="server-health" class="pill" hidden></span></h2>
+          <p id="server-name" class="server-name" hidden></p>
+          <p id="server-error" class="server-error" hidden></p>
+          <table id="server-state" class="server-table"></table>
+          <p class="hint"><span id="server-updated"></span></p>
+        </section>
+        <section class="card">
+          <h2>Server options</h2>
+          <table id="server-options" class="server-table"></table>
+          <p id="server-pending" class="hint" hidden></p>
+        </section>
+        <section class="card" id="server-admin" hidden>
+          <h2>Control <span class="pill">Admin</span></h2>
+          <form id="server-command-form">
+            <label for="server-command">Console command</label>
+            <div class="server-command-row">
+              <input id="server-command" type="text" placeholder="e.g. server.SaveGame" autocomplete="off" spellcheck="false">
+              <button type="submit" class="primary">Run</button>
+            </div>
+          </form>
+          <pre id="server-output" class="server-output" hidden></pre>
+          <div class="server-buttons">
+            <button type="button" id="server-restart">Restart server</button>
+            <button type="button" id="server-stop" class="danger">Stop server</button>
+          </div>
+          <p class="hint">Both shut the game server down; the game's API has nothing else. It comes back by itself only if its host restarts it (a Docker restart policy, a service). A stopped server cannot be started from here.</p>
         </section>
       </div>
 
@@ -228,5 +260,6 @@
   <script src="viewer.js"></script>
   <script src="update.js"></script>
   <script src="source.js"></script>
+  <script src="server.js"></script>
 </body>
 </html>

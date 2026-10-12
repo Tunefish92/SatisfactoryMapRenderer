@@ -186,6 +186,27 @@ public static class DedicatedServerClient
         }
     }
 
+    /// <summary>
+    /// Calls one function of the server's HTTPS API and returns what it answers ("data"); null if it answers
+    /// without content.
+    /// </summary>
+    public static async Task<JsonElement?> FunctionAsync(SaveSource source, string function, object data, TimeSpan timeout, CancellationToken cancel)
+    {
+        try
+        {
+            using var http = CreateClient(source, timeout);
+            using var response = await CallAsync(http, function, data, cancel);
+            if (response.Content.Headers.ContentLength is 0 || (int)response.StatusCode == 204)
+                return null;
+            var body = await ReadJsonAsync(response, cancel);
+            return body.ValueKind == JsonValueKind.Object && Property(body, "data") is { } answer ? answer.Clone() : null;
+        }
+        catch (Exception ex) when (Translate(ex, source, cancel) is { } friendly)
+        {
+            throw friendly;
+        }
+    }
+
     /// <summary>The body as JSON; it is buffered, so it can be read again after the error check.</summary>
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response, CancellationToken cancel) =>
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsByteArrayAsync(cancel));
@@ -242,7 +263,8 @@ public static class DedicatedServerClient
     }
 
     /// <summary>The API documents PascalCase names but answers in camelCase.</summary>
-    private static JsonElement? Property(JsonElement element, string name)
+    /// <summary>A property of an answer, whatever case the server writes its name in.</summary>
+    internal static JsonElement? Property(JsonElement element, string name)
     {
         if (element.ValueKind != JsonValueKind.Object)
             return null;

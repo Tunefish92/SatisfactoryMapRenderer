@@ -115,6 +115,8 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
             else if (path == "/api/source" && request.HttpMethod == "GET")
                 // Visitors only learn how the save got here and when (shown in the status bar): no host, no path.
                 await WriteJsonAsync(response, 200, IsAdmin(request) ? Describe() : new { Admin = false, LoginRequired = true, _source.Kind, _source.LoadedAt });
+            else if (path == "/api/serverstats" && request.HttpMethod == "GET")
+                await WriteJsonAsync(response, 200, await ServerStatsAsync(cancel));
             else if (path == "/api/progress" && request.HttpMethod == "GET")
             {
                 // How far the save that is being loaded has come; polled by the admin's page for its progress bar.
@@ -140,6 +142,8 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
                 await WriteJsonAsync(response, 401, new { error = "Please log in as admin." });
             else if (path == "/api/server/check")
                 await CheckServerAsync(request, response, cancel);
+            else if (path is "/api/server/command" or "/api/server/shutdown")
+                await ControlServerAsync(request, response, path, cancel);
             else if (path is "/api/server/settings" or "/api/ssh/settings")
                 await SaveSettingsAsync(request, response, path, cancel);
             else
@@ -289,6 +293,96 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
     }
 
     // ------------------------------------------------------------------ API
+
+    // ------------------------------------------------------------------ the dedicated server itself
+
+    private static readonly TimeSpan StatsTimeout = TimeSpan.FromSeconds(8), StatsAge = TimeSpan.FromSeconds(5);
+    private readonly SemaphoreSlim _statsLock = new(1, 1);
+    private object? _stats;
+    private DateTime _statsAt;
+
+    private bool HasServer => _source.Kind == SaveSource.Server && _source.Host.Length > 0 && _source.Token.Length > 0;
+
+    /// <summary>
+    /// What the game server says about itself (health, game state, options), for the page's Server tab. Every
+    /// visitor may see it, so the answer is kept for a few seconds: many open pages are one question to the
+    /// game server, not many.
+    /// </summary>
+    private async Task<object> ServerStatsAsync(CancellationToken cancel)
+    {
+        if (!HasServer)
+            return new { Available = false };
+        await _statsLock.WaitAsync(cancel);
+        try
+        {
+            if (_stats is not null && DateTime.UtcNow - _statsAt < StatsAge)
+                return _stats;
+            var source = _source;
+            try
+            {
+                var health = await DedicatedServerClient.FunctionAsync(source, "HealthCheck", new { ClientCustomData = "" }, StatsTimeout, cancel);
+                var state = await DedicatedServerClient.FunctionAsync(source, "QueryServerState", new { }, StatsTimeout, cancel);
+                var options = await DedicatedServerClient.FunctionAsync(source, "GetServerOptions", new { }, StatsTimeout, cancel);
+                _stats = new
+                {
+                    Available = true, Name = source.ServerInfo, At = DateTime.UtcNow,
+                    Health = health is { } h ? DedicatedServerClient.Property(h, "health")?.GetString() : null,
+                    State = state is { } s ? DedicatedServerClient.Property(s, "serverGameState") : null,
+                    Options = options is { } o ? DedicatedServerClient.Property(o, "serverOptions") : null,
+                    PendingOptions = options is { } p ? DedicatedServerClient.Property(p, "pendingServerOptions") : null,
+                };
+            }
+            catch (Exception ex) when (ex is SaveSourceException or JsonException)
+            {
+                // e.g. the server is down or loading a save: that is a state worth showing, not a failure
+                _stats = new { Available = true, Name = source.ServerInfo, At = DateTime.UtcNow, Error = ex.Message };
+            }
+            _statsAt = DateTime.UtcNow;
+            return _stats;
+        }
+        finally
+        {
+            _statsLock.Release();
+        }
+    }
+
+    private sealed record CommandRequest(string? Command);
+
+    /// <summary>Admin only: runs a console command on the game server, or shuts it down.</summary>
+    private async Task ControlServerAsync(HttpListenerRequest request, HttpListenerResponse response, string path, CancellationToken cancel)
+    {
+        if (!HasServer)
+        {
+            await WriteJsonAsync(response, 400, new { error = "No dedicated server is set as the save game source." });
+            return;
+        }
+        try
+        {
+            if (path == "/api/server/shutdown")
+            {
+                log($"Admin shuts down the game server {_source.Host}:{_source.Port}");
+                await DedicatedServerClient.FunctionAsync(_source, "Shutdown", new { }, TimeSpan.FromSeconds(20), cancel);
+                _stats = null;
+                await WriteJsonAsync(response, 200, new { Ok = true });
+                return;
+            }
+            CommandRequest? body = null;
+            try { body = await JsonSerializer.DeserializeAsync<CommandRequest>(request.InputStream, Json, cancel); } catch (JsonException) { }
+            string command = body?.Command?.Trim() ?? "";
+            if (command.Length == 0 || command.Length > 1000)
+            {
+                await WriteJsonAsync(response, 400, new { error = "Enter a console command." });
+                return;
+            }
+            log($"Admin runs on the game server: {command}");
+            var answer = await DedicatedServerClient.FunctionAsync(_source, "RunCommand", new { Command = command }, TimeSpan.FromSeconds(30), cancel);
+            await WriteJsonAsync(response, 200, new { Output = answer is { } a ? DedicatedServerClient.Property(a, "commandResult")?.GetString() ?? "" : "" });
+        }
+        catch (SaveSourceException ex)
+        {
+            await WriteJsonAsync(response, 502, new { error = ex.Message });
+        }
+    }
 
     private object Describe() => new
     {

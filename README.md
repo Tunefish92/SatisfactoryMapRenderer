@@ -178,6 +178,18 @@ folder, zoom) go into `.env`; see `.env.example`.
 While a save is loaded, a progress window shows what is happening. Connection settings, including the API token,
 are stored in the data folder (`cache/source.json`), readable by the app's user only.
 
+### The Server tab
+
+When the save game comes from a dedicated server's API, the side panel gets a **Server** tab. Every visitor
+sees what the server says about itself: whether it is healthy, the session, players online, tech tier, game
+phase, active milestone, play time, tick rate, and the server's options. It is asked every ten seconds while
+the tab is open.
+
+Logged in as admin, the tab also has a **console** that runs a command on the game server and shows its
+output, and **Restart server** and **Stop server**. Both shut the game server down, because that is all the
+game's API offers: the server comes back by itself only if its host restarts it (a Docker restart policy, a
+service), and a stopped server cannot be started from the map.
+
 ### Getting the server's API token
 
 The dedicated server hands out the token itself; you ask for it once in the server's console.
@@ -190,7 +202,7 @@ The dedicated server hands out the token itself; you ask for it once in the serv
    token into the *API token* field. *Check version* tells you whether the connection works.
 
 The token does not expire, so this is needed only once. Treat it like a password: it allows managing the
-server, not only reading saves. If the server runs in a container without the game's Server Manager at hand,
+server, not only reading saves. `server.InvalidateAPITokens` in the same console revokes all tokens made so far. If the server runs in a container without the game's Server Manager at hand,
 the same command can be typed into the server's own console.
 
 ## Game icons and the in-game map
