@@ -10,6 +10,8 @@ COPY src/SatisfactoryMapRenderer/SatisfactoryMapRenderer.csproj src/Satisfactory
 RUN dotnet restore src/SatisfactoryMapRenderer/SatisfactoryMapRenderer.csproj
 
 COPY src/SatisfactoryMapRenderer/ src/SatisfactoryMapRenderer/
+# The changelog is built into the app: it shows what changed after an update.
+COPY CHANGELOG.md ./
 # The native libraries for Windows, macOS, Android and musl are never used in this image and
 # make up most of the publish output.
 RUN dotnet publish src/SatisfactoryMapRenderer/SatisfactoryMapRenderer.csproj -c Release -o /app/publish --no-restore \

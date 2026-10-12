@@ -486,6 +486,7 @@ public static class HtmlExporter
             w.WriteEndArray();
             w.WriteEndObject();
         }
+        w.WriteString("renderedBy", Version);
         if (header.SaveName.Length > 0)
             w.WriteString("saveName", header.SaveName);
         if (header.SaveDateTimeUtc != default)
@@ -684,7 +685,45 @@ public static class HtmlExporter
 
         // Which renderer wrote the viewer, for the footer and the update check against the project's releases.
         File.WriteAllText(Path.Combine(outputDirectory, "version.js"),
-            $"window.MAP_RENDERER = {JsonSerializer.Serialize(new { version = Version, repository = Repository })};\n");
+            $"window.MAP_RENDERER = {JsonSerializer.Serialize(new { version = Version, repository = Repository, changes = Changes(Version) })};\n");
+    }
+
+    /// <summary>
+    /// What the changelog says about a version, for the "what is new" window of the viewer: its sections
+    /// (a title, possibly empty, and the entries under it). Empty if the version has no entry.
+    /// </summary>
+    internal static List<object> Changes(string version)
+    {
+        var sections = new List<(string Title, List<string> Items)>();
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Changelog.md");
+        if (stream is null)
+            return [];
+        using var reader = new StreamReader(stream);
+        bool inside = false;
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.StartsWith("## ", StringComparison.Ordinal))
+            {
+                if (inside)
+                    break;
+                // "## 0.2.1 – 2026-10-12"
+                inside = line[3..].Split(' ')[0] == version;
+                continue;
+            }
+            if (!inside || line.Trim().Length == 0 || line.StartsWith("```", StringComparison.Ordinal))
+                continue;
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+                sections.Add((line[4..].Trim(), []));
+            else if (line.StartsWith("* ", StringComparison.Ordinal) || line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                if (sections.Count == 0)
+                    sections.Add(("", []));
+                sections[^1].Items.Add(line[2..].Trim());
+            }
+            else if (sections.Count > 0 && sections[^1].Items.Count > 0)
+                sections[^1].Items[^1] += " " + line.Trim(); // an entry that runs on over several lines
+        }
+        return [.. sections.Where(s => s.Items.Count > 0).Select(s => (object)new { title = s.Title, items = s.Items })];
     }
 
     /// <summary>GitHub repository whose releases the viewer checks for updates.</summary>

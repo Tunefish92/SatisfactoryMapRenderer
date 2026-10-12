@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 – 2026-10-12
+
+* After an update, the page shows once what is new in the installed version, and says whether the map still
+  has to be rendered again to show it.
+
 ## 0.2.1 – 2026-10-12
 
 * After an update, a map that an older version rendered is rendered again at start from the save kept in the

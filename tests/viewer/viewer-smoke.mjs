@@ -107,7 +107,7 @@ try {
   await send('Log.enable');
   await send('Page.enable');
   // The test must not depend on the network: switch the viewer's update check (a request to GitHub) off.
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('smr:updates', 'false'); } catch {}" });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('smr:updates', 'false'); localStorage.setItem('smr:news', 'false'); } catch {}" });
   await send('Page.navigate', { url: pathToFileURL(resolve(page)).href });
   await sleep(2500);
 

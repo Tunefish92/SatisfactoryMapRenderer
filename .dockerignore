@@ -25,6 +25,7 @@ unraid/
 docs/
 docker-compose*.yml
 *.md
+!CHANGELOG.md
 .gitignore
 .dockerignore
 LICENSE
