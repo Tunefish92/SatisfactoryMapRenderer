@@ -142,6 +142,8 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
                 await WriteJsonAsync(response, 401, new { error = "Please log in as admin." });
             else if (path == "/api/server/check")
                 await CheckServerAsync(request, response, cancel);
+            else if (path == "/api/server/commands")
+                await ListCommandsAsync(response, cancel);
             else if (path is "/api/server/command" or "/api/server/shutdown")
                 await ControlServerAsync(request, response, path, cancel);
             else if (path is "/api/server/settings" or "/api/ssh/settings")
@@ -344,6 +346,47 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
         {
             _statsLock.Release();
         }
+    }
+
+    private object? _commands;
+    private DateTime _commandsAt;
+
+    /// <summary>
+    /// Admin only: everything the game server's console knows, asked from the server itself. "DumpCCmds"
+    /// lists its commands, "DumpCVars" its settings with their current values. Kept for a while; the list
+    /// only changes with the game's version.
+    /// </summary>
+    private async Task ListCommandsAsync(HttpListenerResponse response, CancellationToken cancel)
+    {
+        if (!HasServer)
+        {
+            await WriteJsonAsync(response, 400, new { error = "No dedicated server is set as the save game source." });
+            return;
+        }
+        if (_commands is null || DateTime.UtcNow - _commandsAt > TimeSpan.FromMinutes(10))
+        {
+            try
+            {
+                async Task<string[]> Lines(string command) =>
+                    (await DedicatedServerClient.FunctionAsync(_source, "RunCommand", new { Command = command }, TimeSpan.FromSeconds(30), cancel) is { } answer
+                        ? DedicatedServerClient.Property(answer, "commandResult")?.GetString() ?? "" : "")
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                // one name per line; anything else is not a list ("Unknown Console Command" on a server that has no such command)
+                var commands = (await Lines("DumpCCmds")).Where(l => !l.Contains(' ')).ToArray();
+                // name = "value"      LastSetBy: ...
+                var settings = (await Lines("DumpCVars")).Select(l => l.Split(" = ", 2)).Where(p => p.Length == 2 && !p[0].Contains(' '))
+                    .Select(p => new[] { p[0], p[1].Split("LastSetBy:")[0].Trim().Trim('"') }).ToArray();
+                _commands = new { Commands = commands, Settings = settings };
+                _commandsAt = DateTime.UtcNow;
+            }
+            catch (SaveSourceException ex)
+            {
+                await WriteJsonAsync(response, 502, new { error = ex.Message });
+                return;
+            }
+        }
+        await WriteJsonAsync(response, 200, _commands);
     }
 
     private sealed record CommandRequest(string? Command);

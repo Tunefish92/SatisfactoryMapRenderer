@@ -117,6 +117,53 @@
     }
   });
 
+  // Everything the server's console knows, asked from the server when the list is opened for the first time.
+  const list = $('server-list'), items = $('server-list-items');
+  let known = null, kind = 'game';
+  const MAX_SHOWN = 300;
+  const isGame = name => /^(server|FG)\./i.test(name);
+  function showList() {
+    if (!known) return;
+    const words = $('server-list-filter').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const commands = known.commands.map(name => [name, null]), settings = known.settings;
+    const all = kind === 'commands' ? commands : kind === 'settings' ? settings : [...commands, ...settings].filter(([name]) => isGame(name));
+    const found = all.filter(([name]) => words.every(w => name.toLowerCase().includes(w)));
+    items.innerHTML = found.slice(0, MAX_SHOWN).map(([name, value]) =>
+      `<li><button type="button" data-name="${esc(name)}"><span>${esc(name)}</span>${value === null ? '<em>command</em>' : `<code>${esc(value)}</code>`}</button></li>`).join('');
+    $('server-list-more').hidden = found.length <= MAX_SHOWN;
+    $('server-list-more').textContent = `${(found.length - MAX_SHOWN).toLocaleString('en-US')} more: narrow the filter to see them.`;
+    if (!found.length) items.innerHTML = '<li class="none">Nothing matches.</li>';
+  }
+  list.addEventListener('toggle', async () => {
+    if (!list.open || known) return;
+    try {
+      known = await api('/api/server/commands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const buttons = list.querySelectorAll('[data-kind]');
+      buttons[0].textContent = `Satisfactory (${[...known.commands, ...known.settings.map(s => s[0])].filter(isGame).length})`;
+      buttons[1].textContent = `Commands (${known.commands.length.toLocaleString('en-US')})`;
+      buttons[2].textContent = `Settings (${known.settings.length.toLocaleString('en-US')})`;
+      $('server-list-status').hidden = true;
+      $('server-list-body').hidden = false;
+      showList();
+    } catch (error) {
+      $('server-list-status').textContent = `The list could not be read: ${error.message}`;
+    }
+  });
+  $('server-list-filter').addEventListener('input', showList);
+  for (const button of list.querySelectorAll('[data-kind]')) {
+    button.addEventListener('click', () => {
+      kind = button.dataset.kind;
+      for (const other of list.querySelectorAll('[data-kind]')) other.setAttribute('aria-pressed', other === button);
+      showList();
+    });
+  }
+  items.addEventListener('click', e => {
+    const button = e.target.closest('button[data-name]');
+    if (!button) return;
+    $('server-command').value = button.dataset.name + ' ';
+    $('server-command').focus();
+  });
+
   async function shutDown(question, done) {
     if (!confirm(question)) return;
     output.hidden = false;
