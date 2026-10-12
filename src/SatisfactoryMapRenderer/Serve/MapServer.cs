@@ -352,9 +352,9 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
     private DateTime _commandsAt;
 
     /// <summary>
-    /// Admin only: everything the game server's console knows, asked from the server itself. "DumpCCmds"
-    /// lists its commands, "DumpCVars" its settings with their current values. Kept for a while; the list
-    /// only changes with the game's version.
+    /// Admin only: the console commands and settings that matter for running a Satisfactory server. The
+    /// server's own commands ("server.…") are asked from the server ("DumpCCmds" lists everything its console
+    /// knows, mostly engine internals); the settings are its server options with their current values.
     /// </summary>
     private async Task ListCommandsAsync(HttpListenerResponse response, CancellationToken cancel)
     {
@@ -367,16 +367,14 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
         {
             try
             {
-                async Task<string[]> Lines(string command) =>
-                    (await DedicatedServerClient.FunctionAsync(_source, "RunCommand", new { Command = command }, TimeSpan.FromSeconds(30), cancel) is { } answer
-                        ? DedicatedServerClient.Property(answer, "commandResult")?.GetString() ?? "" : "")
-                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-                // one name per line; anything else is not a list ("Unknown Console Command" on a server that has no such command)
-                var commands = (await Lines("DumpCCmds")).Where(l => !l.Contains(' ')).ToArray();
-                // name = "value"      LastSetBy: ...
-                var settings = (await Lines("DumpCVars")).Select(l => l.Split(" = ", 2)).Where(p => p.Length == 2 && !p[0].Contains(' '))
-                    .Select(p => new[] { p[0], p[1].Split("LastSetBy:")[0].Trim().Trim('"') }).ToArray();
+                var listed = await DedicatedServerClient.FunctionAsync(_source, "RunCommand", new { Command = "DumpCCmds" }, TimeSpan.FromSeconds(30), cancel);
+                string[] commands = (listed is { } answer ? DedicatedServerClient.Property(answer, "commandResult")?.GetString() ?? "" : "")
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(l => !l.Contains(' ') && l.StartsWith("server.", StringComparison.OrdinalIgnoreCase)).ToArray();
+                var options = await DedicatedServerClient.FunctionAsync(_source, "GetServerOptions", new { }, StatsTimeout, cancel);
+                var settings = options is { } o && DedicatedServerClient.Property(o, "serverOptions") is { ValueKind: JsonValueKind.Object } current
+                    ? current.EnumerateObject().Select(p => new[] { p.Name, p.Value.ToString() }).OrderBy(p => p[0], StringComparer.OrdinalIgnoreCase).ToArray()
+                    : [];
                 _commands = new { Commands = commands, Settings = settings };
                 _commandsAt = DateTime.UtcNow;
             }

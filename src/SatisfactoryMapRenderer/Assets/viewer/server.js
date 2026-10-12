@@ -117,46 +117,39 @@
     }
   });
 
-  // Everything the server's console knows, asked from the server when the list is opened for the first time.
+  // The commands and settings that matter for a Satisfactory server, asked from the server when the list is
+  // opened for the first time. What each one does is not something the server tells; that is written here.
+  const ABOUT = {
+    'server.savegame': 'Saves the game now. Add a name for the save file.',
+    'server.generateapitoken': 'Makes a new API token for tools like this map.',
+    'server.invalidateapitokens': 'Revokes every API token, the one this map uses included.',
+    'fg.autosaveinterval': 'Seconds between two autosaves.',
+    'fg.dsautopause': 'Pauses the game while nobody is connected.',
+    'fg.dsautosaveondisconnect': 'Saves the game when a player leaves.',
+    'fg.networkquality': 'Network quality, 0 (low) to 3 (ultra).',
+    'fg.serverrestarttimeslot': 'Time of the daily restart, in minutes after midnight (UTC).',
+    'fg.sendgameplaydata': 'Sends gameplay data to Coffee Stain Studios.',
+    'fg.disableseasonalevents': 'Switches the seasonal events (FICSMAS) off.',
+    'fg.enableseasonalevents': 'Switches the seasonal events (FICSMAS) on.',
+  };
   const list = $('server-list'), items = $('server-list-items');
-  let known = null, kind = 'game';
-  const MAX_SHOWN = 300;
-  const isGame = name => /^(server|FG)\./i.test(name);
-  function showList() {
-    if (!known) return;
-    const words = $('server-list-filter').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const commands = known.commands.map(name => [name, null]), settings = known.settings;
-    const all = kind === 'commands' ? commands : kind === 'settings' ? settings : [...commands, ...settings].filter(([name]) => isGame(name));
-    const found = all.filter(([name]) => words.every(w => name.toLowerCase().includes(w)));
-    items.innerHTML = found.slice(0, MAX_SHOWN).map(([name, value]) =>
-      `<li><button type="button" data-name="${esc(name)}"><span>${esc(name)}</span>${value === null ? '<em>command</em>' : `<code>${esc(value)}</code>`}</button></li>`).join('');
-    $('server-list-more').hidden = found.length <= MAX_SHOWN;
-    $('server-list-more').textContent = `${(found.length - MAX_SHOWN).toLocaleString('en-US')} more: narrow the filter to see them.`;
-    if (!found.length) items.innerHTML = '<li class="none">Nothing matches.</li>';
-  }
+  let known = null;
   list.addEventListener('toggle', async () => {
     if (!list.open || known) return;
     try {
       known = await api('/api/server/commands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      const buttons = list.querySelectorAll('[data-kind]');
-      buttons[0].textContent = `Satisfactory (${[...known.commands, ...known.settings.map(s => s[0])].filter(isGame).length})`;
-      buttons[1].textContent = `Commands (${known.commands.length.toLocaleString('en-US')})`;
-      buttons[2].textContent = `Settings (${known.settings.length.toLocaleString('en-US')})`;
+      const entries = [...known.commands.map(name => [name, null]), ...known.settings];
+      items.innerHTML = entries.map(([name, value]) => {
+        const about = ABOUT[name.toLowerCase()];
+        return `<li><button type="button" data-name="${esc(name)}"><span><b>${esc(name)}</b>${about ? `<small>${esc(about)}</small>` : ''}</span>`
+          + `${value === null ? '<em>command</em>' : `<code>${esc(value)}</code>`}</button></li>`;
+      }).join('') || '<li class="none">The server lists none.</li>';
       $('server-list-status').hidden = true;
       $('server-list-body').hidden = false;
-      showList();
     } catch (error) {
       $('server-list-status').textContent = `The list could not be read: ${error.message}`;
     }
   });
-  $('server-list-filter').addEventListener('input', showList);
-  for (const button of list.querySelectorAll('[data-kind]')) {
-    button.addEventListener('click', () => {
-      kind = button.dataset.kind;
-      for (const other of list.querySelectorAll('[data-kind]')) other.setAttribute('aria-pressed', other === button);
-      showList();
-    });
-  }
   items.addEventListener('click', e => {
     const button = e.target.closest('button[data-name]');
     if (!button) return;

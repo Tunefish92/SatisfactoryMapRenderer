@@ -6,8 +6,8 @@
   Fuel-Powered Generator and the Nuclear Power Plant showed one as a grey slab 95 m high.
 * Server tab: when the save game comes from a dedicated server's API, the side panel shows the server's
   health, game state (session, players, tech tier, phase, milestone, play time, tick rate) and options. Admins
-  also get a console for server commands, with a searchable list of all commands and settings the server
-  knows, and buttons that shut the server down.
+  also get a console for server commands, with a list of the server's own commands and options, and
+  buttons that shut the server down.
 * README: how to get the dedicated server's API token.
 
 ## 0.2.2 – 2026-10-12

@@ -154,17 +154,10 @@
           </form>
           <pre id="server-output" class="server-output" hidden></pre>
           <details id="server-list" class="server-list">
-            <summary>All commands and settings</summary>
+            <summary>Commands and settings</summary>
             <p id="server-list-status" class="hint">Asking the server…</p>
             <div id="server-list-body" hidden>
-              <input id="server-list-filter" type="search" placeholder="Filter, e.g. save, FG., net…" autocomplete="off" spellcheck="false">
-              <div class="server-list-kinds" role="group" aria-label="What to list">
-                <button type="button" data-kind="game" aria-pressed="true">Satisfactory</button>
-                <button type="button" data-kind="commands" aria-pressed="false">Commands</button>
-                <button type="button" data-kind="settings" aria-pressed="false">Settings</button>
-              </div>
               <ul id="server-list-items"></ul>
-              <p id="server-list-more" class="hint" hidden></p>
               <p class="hint">Click an entry to put it into the command line. A setting on its own shows its value; with a value after it, it is changed.</p>
             </div>
           </details>

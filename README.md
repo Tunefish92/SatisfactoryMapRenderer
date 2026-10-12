@@ -186,8 +186,8 @@ phase, active milestone, play time, tick rate, and the server's options. It is a
 the tab is open.
 
 Logged in as admin, the tab also has a **console** that runs a command on the game server and shows its
-output, with a searchable list of every command and setting the server knows (asked from the server itself;
-a click puts the entry into the command line), and **Restart server** and **Stop server**. Both shut the game server down, because that is all the
+output, with a list of the server's own commands and its options (a click puts the entry into the command
+line), and **Restart server** and **Stop server**. Both shut the game server down, because that is all the
 game's API offers: the server comes back by itself only if its host restarts it (a Docker restart policy, a
 service), and a stopped server cannot be started from the map.
 
