@@ -311,6 +311,12 @@ Releases: a tag `v1.2.3` builds the image for amd64 and arm64 and publishes it t
 variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` are set, to Docker Hub. A tag with a hyphen
 (`v1.3.0-beta.1`) is a pre-release and does not move `latest`.
 
+## A note about this project
+
+I'm a hobby programmer with an interest in coding and software development. I can read and write code, but for this project, I used Claude AI as a development assistant to help me turn my ideas into a working project.
+
+I believe AI is a useful tool for learning, experimenting, and bringing ideas to life. I want to be transparent about how this project was created and acknowledge the role AI played in its development.
+
 ## Licence and credits
 
 The code is under the [MIT licence](LICENSE).
