@@ -11,12 +11,20 @@ namespace SatisfactoryMapRenderer.Game;
 public sealed record LevelActor(string Class, string Name, string Label, double X, double Y, double Z, Dictionary<string, string>? Props)
 {
     public string? Prop(string key) => Props?.GetValueOrDefault(key);
+
+    /// <summary>How the actor is turned (quaternion x y z w); null when it is not.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Rotation { get; init; }
+
+    /// <summary>How the actor is scaled (x y z); null when it is not.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Scale { get; init; }
 }
 
 /// <summary>Everything the renderer takes from the installed game. Cached as JSON per game version.</summary>
 public sealed class GameData
 {
-    public const int FormatVersion = 4;
+    public const int FormatVersion = 5;
 
     public int Version { get; set; } = FormatVersion;
     public string GameVersionKey { get; set; } = "";

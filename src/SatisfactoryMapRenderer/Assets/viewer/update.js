@@ -39,7 +39,10 @@
     const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // the changelog's own emphasis: **bold**, `code`
     const inline = s => esc(s).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
-    $('news-title').textContent = `What is new in version ${renderer.version}`;
+    // several versions at once: from the one this browser saw last up to this one
+    const from = seen || renderer.updatedFrom;
+    $('news-title').textContent = changes.length > 1 && from
+      ? `What is new from version ${from} to ${renderer.version}` : `What is new in version ${renderer.version}`;
     $('news-body').innerHTML = changes.map(change =>
       (changes.length > 1 ? `<h3 class="news-version">Version ${esc(change.version)}</h3>` : '') + change.sections.map(section =>
         (section.title ? `<h3>${esc(section.title)}</h3>` : '') + `<ul>${section.items.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`).join('')).join('');

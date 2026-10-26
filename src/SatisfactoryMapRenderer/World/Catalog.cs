@@ -275,6 +275,16 @@ public static partial class Catalog
         return (alternate ? "Alt: " : "") + Prettify(s);
     }
 
+    /// <summary>
+    /// What a hand-mineable pile holds: the save only keeps its place in the game's table of them
+    /// (FGResourceSettings.mResourceDepositTable in the game's DefaultGame.ini).
+    /// </summary>
+    public static readonly string[] DepositResources =
+    [
+        "Desc_Stone_C", "Desc_OreIron_C", "Desc_OreCopper_C", "Desc_Coal_C", "Desc_OreGold_C", "Desc_Sulfur_C", "Desc_RawQuartz_C",
+        "Desc_OreBauxite_C", "Desc_OreUranium_C",
+    ];
+
     public static string ShortName(string path)
     {
         int dot = path.LastIndexOf('.');

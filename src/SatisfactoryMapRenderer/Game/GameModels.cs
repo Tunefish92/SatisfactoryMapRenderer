@@ -50,7 +50,7 @@ public sealed class ModelLibrary
     public const string IndexFile = "models.json", DataFile = "models.bin";
 
     /// <summary>Raised when the layout of models.bin or the meaning of the index changes.</summary>
-    public const int FormatVersion = 2;
+    public const int FormatVersion = 3;
     public const string TextureDirectory = "textures";
 
     public int Version { get; set; }
@@ -115,7 +115,7 @@ public sealed class ModelLibrary
 public static class GameModels
 {
     /// <summary>The level of detail with the fewest triangles that still has this many is used.</summary>
-    private const int WantedTriangles = 250, RepeatedTriangles = 90, DetailedTriangles = 5000;
+    private const int WantedTriangles = 250, RepeatedTriangles = 90, DetailedTriangles = 5000, LargeTriangles = 6000, ItemTriangles = 30;
 
     /// <summary>Helper geometry that is not part of what a building looks like.</summary>
     private static readonly string[] Ignored = ["Fog", "Clearance", "Hologram", "Arrow", "Collision", "Decal", "Snap", "Preview", "Guide", "Glow", "Trigger", "Smoke"];
@@ -155,6 +155,7 @@ public static class GameModels
         var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
         var partKeys = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var liftPieces = new Dictionary<string, string>(StringComparer.Ordinal); // what later lifts take over from Mk.1
+        var items = new HashSet<string>(StringComparer.Ordinal); // tens of thousands on the belts, each a few centimetres
 
         foreach (string file in archive.Files.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
                                                          && Path.GetFileName(f).StartsWith("Build_", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
@@ -302,6 +303,14 @@ public static class GameModels
 
         ReadResources(archive, library, meshObjects, slotOverrides);
         ReadPlayer(archive, library, meshObjects, detailed);
+        ReadItems(archive, library, meshObjects, items);
+        ReadWorldActors(archive, library, meshObjects, slotOverrides);
+        // there are thousands of them all over the map: as coarse as the pieces of belts
+        foreach (var (name, parts) in library.Classes)
+            if (name.StartsWith("BP_", StringComparison.Ordinal) || name.StartsWith("Char_", StringComparison.Ordinal) && name != PlayerClass
+                || name.StartsWith("Deposit:", StringComparison.Ordinal))
+                foreach (var part in parts)
+                    repeated.Add(part.Mesh);
 
         // A building made from another building (the power tower with a platform from the power tower) only
         // holds what it adds or changes; the rest is the other building's. Buildings that list their meshes
@@ -337,7 +346,7 @@ public static class GameModels
                 try
                 {
                     // a piece that is repeated thousands of times along belts and pipes may be coarser
-                    if (Write(mesh, slotOverrides.GetValueOrDefault(name) ?? Slots(mesh), stream, materials, repeated.Contains(name) ? RepeatedTriangles : detailed.Contains(name) ? DetailedTriangles : WantedTriangles) is { } written)
+                    if (Write(mesh, slotOverrides.GetValueOrDefault(name) ?? Slots(mesh), stream, materials, items.Contains(name) ? ItemTriangles : repeated.Contains(name) ? RepeatedTriangles : detailed.Contains(name) ? DetailedTriangles : WantedTriangles) is { } written)
                         library.Meshes[name] = written;
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -424,6 +433,138 @@ public static class GameModels
         }
     }
 
+    /// <summary>Class of the model library for an item on a belt: "Item:" and the item's descriptor class.</summary>
+    public static string ItemClass(string descriptor) => "Item:" + descriptor;
+
+    /// <summary>Class of the model library for a hand-mineable pile of a resource: "Deposit:" and the resource's descriptor class.</summary>
+    public static string DepositClass(string descriptor) => "Deposit:" + descriptor;
+
+    /// <summary>
+    /// What items look like on a belt and on the ground: every item names the mesh for that, and resources
+    /// another one for their piles to mine by hand.
+    /// </summary>
+    private static void ReadItems(GameArchive archive, ModelLibrary library, Dictionary<string, UObject> meshObjects, HashSet<string> items)
+    {
+        foreach (string file in archive.Files.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)
+                                                         && Path.GetFileName(f).StartsWith("Desc_", StringComparison.Ordinal)).Order(StringComparer.Ordinal))
+        {
+            string name = Path.GetFileNameWithoutExtension(file);
+            try
+            {
+                if (archive.LoadExports(file).FirstOrDefault(e => e.Name == "Default__" + name + "_C") is not { } defaults)
+                    continue;
+                if (defaults.TryGetValue(out FPackageIndex conveyor, "mConveyorMesh") && Mesh(conveyor, meshObjects) is { } item)
+                {
+                    library.Classes[ItemClass(name + "_C")] = [Part(item, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))];
+                    items.Add(item);
+                }
+                if (defaults.TryGetValue(out FPackageIndex deposit, "mDepositMesh") && Mesh(deposit, meshObjects) is { } pile)
+                    library.Classes[DepositClass(name + "_C")] = [Part(pile, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))];
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // An item that cannot be read is left off the belts.
+            }
+        }
+    }
+
+    /// <summary>The things in the world that are not built: collectibles, plants, hazards, creatures, vehicles.</summary>
+    private static readonly string[] WorldActors =
+    [
+        "BP_Crystal", "BP_Crystal_mk2", "BP_Crystal_mk3", "BP_WAT1", "BP_WAT2", "BP_MercerShrine", "BP_SomerSloopShrine", "BP_DropPod",
+        "BP_BerryBush", "BP_NutBush", "BP_Shroom_01", "BP_SporeFlower", "BP_GasPillar_01", "BP_GasPillar_02", "BP_GasPillar_03", "BP_GasPillar_04",
+        "BP_GasPillar_05", "BP_DestructibleLargeRock", "BP_DestructibleSmallRock", "BP_DestructibleFlatRock", "BP_Crate", "BP_WreckCrate",
+        "BP_Truck", "BP_Tractor", "BP_Explorer", "BP_Locomotive", "BP_FreightWagon", "BP_DroneTransport", "BP_Golfcart", "BP_GolfcartGold",
+    ];
+
+    /// <summary>Meshes of these world objects that the game places or shows itself only at times (the berries on a bush).</summary>
+    private static readonly string[] HiddenActorMeshes = ["SM_Berry_01"];
+
+    /// <summary>
+    /// The world objects of <see cref="WorldActors"/> and every creature, as their blueprints put them together:
+    /// mesh components, also those the blueprint takes over from the one it is made from.
+    /// </summary>
+    private static void ReadWorldActors(GameArchive archive, ModelLibrary library, Dictionary<string, UObject> meshObjects, Dictionary<string, FPackageIndex?[]> slotOverrides)
+    {
+        var files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string file in archive.Files.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)))
+            files.TryAdd(Path.GetFileNameWithoutExtension(file), file);
+        var names = WorldActors.Concat(files.Where(f => f.Value.Contains("/Character/Creature/", StringComparison.OrdinalIgnoreCase)
+                                                        && f.Key.StartsWith("Char_", StringComparison.Ordinal)).Select(f => f.Key));
+        foreach (string name in names.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var parts = new List<ModelPart>();
+                var seen = new HashSet<string>(StringComparer.Ordinal); // components a blueprint made from another one changed
+                for (string? current = name; current is not null && files.TryGetValue(current, out string? file) && seen.Count < 64;)
+                {
+                    var exports = archive.LoadExports(file).ToList();
+                    var hangsOn = new Dictionary<string, UObject>(StringComparer.Ordinal);
+                    foreach (var node in exports.Where(e => e.ExportType == "SCS_Node"))
+                        if (node.GetOrDefault<UObject?>("ComponentTemplate") is { } template)
+                            foreach (var child in node.GetOrDefault<UObject[]>("ChildNodes") ?? [])
+                                if (child.GetOrDefault<UObject?>("ComponentTemplate") is { } hanging)
+                                    hangsOn[hanging.Name] = template;
+                    foreach (var component in exports.Where(e => e.ExportType is "StaticMeshComponent" or "SkeletalMeshComponent" or "FGColoredInstanceMeshProxy"))
+                    {
+                        string key = component.Name.Replace("_GEN_VARIABLE", "");
+                        if (!seen.Add(key)
+                            || Ignored.Any(i => component.Name.Contains(i, StringComparison.OrdinalIgnoreCase))
+                            || (component.TryGetValue(out bool visible, "bVisible") && !visible)
+                            || (component.TryGetValue(out bool hidden, "bHiddenInGame") && hidden)
+                            || !(component.TryGetValue(out FPackageIndex meshIndex, "StaticMesh") || component.TryGetValue(out meshIndex, "SkeletalMesh") || component.TryGetValue(out meshIndex, "SkinnedAsset"))
+                            || Mesh(meshIndex, meshObjects) is not { } mesh || HiddenActorMeshes.Contains(mesh))
+                            continue;
+                        var t = component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+                        var r = component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                        var sc = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                        for (var at = component; hangsOn.TryGetValue(at.Name, out var parent) && parts.Count < 256; at = parent)
+                        {
+                            var pt = parent.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+                            var pr = parent.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+                            var ps = parent.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
+                            t = pt + pr.RotateVector(new FVector(t.X * ps.X, t.Y * ps.Y, t.Z * ps.Z));
+                            r = pr * r;
+                            sc = new FVector(sc.X * ps.X, sc.Y * ps.Y, sc.Z * ps.Z);
+                        }
+                        string variant = Variant(mesh, component.GetOrDefault<FPackageIndex?[]>("OverrideMaterials") ?? [], meshObjects, slotOverrides);
+                        // the same mesh twice in the same place (a mesh and its stand-in for far views)
+                        if (parts.Any(p => p.Mesh == variant && Math.Abs(p.T[0] - t.X) + Math.Abs(p.T[1] - t.Y) + Math.Abs(p.T[2] - t.Z) < 1))
+                            continue;
+                        parts.Add(Part(variant, t, r, sc));
+                    }
+                    current = exports.OfType<UClass>().FirstOrDefault()?.SuperStruct?.Name is { } super && super.EndsWith("_C", StringComparison.Ordinal)
+                        ? super[..^2] : null;
+                }
+                if (parts.Count > 0)
+                    library.Classes[name + "_C"] = parts;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Without its model the object is only a marker.
+            }
+        }
+    }
+
+    /// <summary>A mesh with some of its materials replaced; the mesh itself when none are.</summary>
+    private static string Variant(string mesh, FPackageIndex?[] materials, Dictionary<string, UObject> meshObjects, Dictionary<string, FPackageIndex?[]> slotOverrides)
+    {
+        if (!materials.Any(m => m is { IsNull: false }))
+            return mesh;
+        string variant = mesh + "@" + string.Join("+", materials.Select(m => m is { IsNull: false } ? m.Name : ""));
+        if (!meshObjects.ContainsKey(variant))
+        {
+            var slots = (FPackageIndex?[])Slots(meshObjects[mesh]).Clone();
+            for (int i = 0; i < slots.Length && i < materials.Length; i++)
+                if (materials[i] is { IsNull: false })
+                    slots[i] = materials[i];
+            slotOverrides[variant] = slots;
+            meshObjects[variant] = meshObjects[mesh];
+        }
+        return variant;
+    }
+
     private const string LevelDirectory = "/Map/GameLevel01/", ResourceMeshes = "/Game/FactoryGame/Resource/RawResources/";
 
     /// <summary>
@@ -471,21 +612,8 @@ public static class GameModels
         {
             if (Mesh(meshIndex, meshObjects) is not { } mesh)
                 continue;
-            string variant = mesh;
-            if (materials.Any(m => m is { IsNull: false }))
-            {
-                // the mesh's own materials, except where the level names another one
-                variant = mesh + "@" + string.Join("+", materials.Select(m => m is { IsNull: false } ? m.Name : ""));
-                if (!meshObjects.ContainsKey(variant))
-                {
-                    var slots = (FPackageIndex?[])Slots(meshObjects[mesh]).Clone();
-                    for (int i = 0; i < slots.Length && i < materials.Length; i++)
-                        if (materials[i] is { IsNull: false })
-                            slots[i] = materials[i];
-                    slotOverrides[variant] = slots;
-                    meshObjects[variant] = meshObjects[mesh];
-                }
-            }
+            // the mesh's own materials, except where the level names another one
+            string variant = Variant(mesh, materials, meshObjects, slotOverrides);
             string name = "Resource:" + variant;
             library.Classes.TryAdd(name, [Part(variant, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))]);
             library.Resources.Add(new WorldObject(name, [Round(t.X), Round(t.Y), Round(t.Z)], [Math.Round(r.X, 5), Math.Round(r.Y, 5), Math.Round(r.Z, 5), Math.Round(r.W, 5)],
@@ -585,6 +713,24 @@ public static class GameModels
         var whole = real.Where(c => !c.Lod.Runs.Any(r => materials.IsStandIn(slots, r.Material))).ToList();
         if (whole.Count > 0)
             real = whole;
+        // Coarse levels can drop whole surfaces (the Crafting Bench keeps only its frame): for buildings only
+        // levels that still have every material of the finest one. Small things in their thousands may lose some.
+        var all = real.OrderByDescending(c => c.Lod.IndexCount).First().Materials.Where(m => m >= 0).ToHashSet();
+        if (wantedTriangles >= WantedTriangles && real.Where(c => all.IsSubsetOf(c.Materials)).ToList() is { Count: > 0 } complete)
+            real = complete;
+        // A large building is looked at from close by and has many parts; the coarse levels of a building
+        // 30 m high leave it a heap of blocks. The number wanted grows with the area it covers.
+        if (wantedTriangles == WantedTriangles)
+        {
+            var finest = real.OrderByDescending(c => c.Lod.IndexCount).First().Lod;
+            double extent = 0;
+            for (int i = 0; i < finest.VertexCount; i += Math.Max(1, finest.VertexCount / 2000))
+            {
+                var v = finest.Position(i);
+                extent = Math.Max(extent, Math.Max(Math.Abs(v.X), Math.Max(Math.Abs(v.Y), Math.Abs(v.Z))));
+            }
+            wantedTriangles = (int)Math.Clamp(wantedTriangles * Math.Pow(extent / 250, 2), wantedTriangles, LargeTriangles);
+        }
         var (lod, sectionMaterials) = real.Where(c => c.Lod.IndexCount / 3 >= wantedTriangles).OrderBy(c => c.Lod.IndexCount).FirstOrDefault() is { Lod: not null } wanted
             ? wanted
             : real.OrderByDescending(c => c.Lod.IndexCount).First();

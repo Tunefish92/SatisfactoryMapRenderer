@@ -284,7 +284,18 @@
             });
           }
         }
-        if (known && known.length) {
+        const marker = layer.markers ? ((D.markers || {})[layer.id] || [])[layer.markers[i / 16]] : null;
+        if (marker) {
+          // a slug, crash site, plant, creature …: what its marker on the 2D map says about it
+          const legend = (D.layers || []).find(l => l.id === layer.id)?.legend?.[marker[5]];
+          const sx = b[i + 7] / 1000, sy = b[i + 8] / 1000, sz = b[i + 9] / 1000;
+          pickable.push({
+            info: { name: marker[3], subtitle: legend ? `${layer.title} · ${legend[0]}` : layer.title, x: marker[0], y: marker[1], z: marker[2], details: marker[7], icon: marker[8] },
+            layer: null, x: b[i] - centreX, y: b[i + 1] - centreY, z: b[i + 2] + (b[i + 13] + b[i + 12] / 2) * sz,
+            hx: Math.max(b[i + 10] / 2 * sx, 40), hy: Math.max(b[i + 11] / 2 * sy, 40), hz: Math.max(b[i + 12] / 2 * sz, 40),
+            yaw: Math.atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz)),
+          });
+        } else if (known && known.length) {
           const item = known.shift();
           pickable.push({
             info: { name: item[3], subtitle: `Building · ${item[5]}`, x: item[0], y: item[1], z: b[i + 2], details: item[6], icon: item[7] ?? -1 }, layer: null, x: b[i] - centreX, y: b[i + 1] - centreY, z: b[i + 2] + b[i + 13] + b[i + 12] / 2,

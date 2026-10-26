@@ -19,9 +19,10 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
 * **Three base maps**: a ground map (the world from above without any factory, made from the game's ground
   textures, water and heights), the in-game map, and a relief map with shaded terrain.
 * **3D view**: the whole world as a 3D landscape you can rotate and zoom, with your factory standing on it in
-  the game's own models and textures: machines, foundations, walls, belts, lifts, pipes and tracks. The ground
-  shows the game's own ground textures and water, resource nodes and players stand where they are, and a click
-  on a building or resource node shows its details.
+  the game's own models and textures: machines, foundations, walls, belts with the items on them, lifts, pipes
+  and tracks. The ground shows the game's own ground textures and water; resource nodes, power slugs, artifacts,
+  crash sites, plants, rocks, creatures, vehicles and players stand where they are, and a click on any of them
+  shows its details.
 * **The whole factory**: foundations and walls, buildings (with their game icons when zoomed in), conveyor belts by
   tier, pipes and hypertubes, railways and the power grid.
 * **Everything else on the map**: players with their names, vehicles and trains, creatures and their spawners,
@@ -219,12 +220,15 @@ the factory in the game's own 3D models, placed with the positions and rotations
   the ground data does not cover. Untick **Realistic ground** to see the in-game map on the terrain instead.
 * **Factory**: the models carry the game's textures and the standard paint colours (custom paint from the save
   is not shown). Conveyor belts, pipes, hypertubes and railway tracks are the game's own pieces laid along their
-  paths, conveyor lifts are built from their end and middle pieces. Wires are simple strips at their real
-  heights, and the few building types without a model are boxes.
-* **World**: the rocks, crystals and vents of the resource nodes stand where the game has them, and the players
-  where they were when the game was saved.
-* **Details**: click a building or a resource node to see what the 2D map shows about it (recipe, power,
-  contents; resource, purity, whether it is in use).
+  paths, conveyor lifts are built from their end and middle pieces. Every item on a belt or lift lies where the
+  save has it, in the game's own shape for that item. Wires are simple strips at their real heights, and the few
+  building types without a model are boxes.
+* **World**: the rocks, crystals and vents of the resource nodes stand where the game has them, and so do the
+  uncollected power slugs, Somersloops and Mercer Spheres with their shrines, crash sites, berry bushes, nut
+  bushes and mushrooms, the piles to mine by hand, spore flowers, gas pillars, destructible rocks, crates and
+  items on the ground. Creatures, vehicles and players are where they were when the game was saved.
+* **Details**: click a building, a resource node or anything else in the world to see what the 2D map shows
+  about it (recipe, power, contents; resource, purity, whether it is in use; what a crash site or bush still holds).
 * **Moving around**: drag to rotate, drag with the wheel button or Shift+drag to move, wheel to zoom towards the
   mouse; each layer can be switched off. Heights are the real ones, not exaggerated.
 

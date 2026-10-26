@@ -39,7 +39,16 @@ public sealed class WorldExtractor
     private sealed record WorldActor(string Class, string Name, Vector3 Position, PropertyList Properties, LevelActor? Level, SaveEntity? Entity)
     {
         public string? LevelProp(string key) => Level?.Prop(key);
+
+        public Quaternion Rotation => Entity?.Transform.Rotation
+            ?? (Level?.Rotation is [var x, var y, var z, var w] ? new Quaternion(x, y, z, w) : Quaternion.Identity);
+
+        public Vector3 Scale => Entity?.Transform.Scale
+            ?? (Level?.Scale is [var x, var y, var z] ? new Vector3(x, y, z) : new Vector3(1, 1, 1));
     }
+
+    /// <summary>Per belt and lift: the points of its path in the world and how far along the path each one is.</summary>
+    private readonly Dictionary<string, (Vector3[] Points, double[] At)> _beltPaths = new(StringComparer.Ordinal);
 
     private WorldExtractor(SaveGame save, GameAssets? game)
     {
@@ -78,6 +87,7 @@ public sealed class WorldExtractor
         }
 
         AddLevelActorsMissingFromSave();
+        AddBeltItems();
         BuildSummary();
     }
 
@@ -260,7 +270,8 @@ public sealed class WorldExtractor
         {
             string creature = Catalog.CreatureName(shortName);
             Count(creature);
-            AddMarker(Layers.Creatures, creature, e.Transform.Translation, "#ff9f43", creature, icon: _game?.CreatureIcon(shortName));
+            AddMarker(Layers.Creatures, creature, e.Transform.Translation, "#ff9f43", creature, icon: _game?.CreatureIcon(shortName),
+                rotation: e.Transform.Rotation, scale: e.Transform.Scale, model: shortName);
             return;
         }
 
@@ -356,7 +367,13 @@ public sealed class WorldExtractor
                     "Beacon", icon: _game?.MapIcon("beacon"));
                 return true;
             case "BP_MercerShrine_C" or "BP_SomerSloopShrine_C":
-                return true; // pedestals of the artifacts above; nothing to show
+                // pedestals of the artifacts above: nothing to show on the map, but they stand in the world
+                _world.Features.Add(new MapFeature
+                {
+                    Layer = Layers.Artifacts, Shape = Shape.Point, Name = "Shrine", Position = a.Position, Rotation = a.Rotation, Scale = a.Scale,
+                    Color = "#ff6b81", Model = a.Class, ModelOnly = true,
+                });
+                return true;
             default:
                 return false;
         }
@@ -372,7 +389,7 @@ public sealed class WorldExtractor
         switch (info.Category)
         {
             case BuildCategory.Belt:
-                _beltLength += AddSpline(e, info, Layers.Belts, 120, BeltColor(e.ShortClassName));
+                _beltLength += AddSpline(e, info, Layers.Belts, 120, BeltColor(e.ShortClassName), keepPath: true);
                 return;
             case BuildCategory.Pipe:
                 _pipeLength += AddSpline(e, info, Layers.Pipes, 110, e.ShortClassName.Contains("MK2") ? "#2e86de" : "#7fc4ef");
@@ -389,7 +406,13 @@ public sealed class WorldExtractor
             case BuildCategory.Lift:
                 var lift = AddBox(e, info, Layers.Belts, BeltColor(e.ShortClassName.Replace("Lift", "Belt")));
                 if (e.Properties.Get("mTopTransform") is StructValue { Data: PropertyList top } && AsVector(top.Get("Translation")) is { } offset)
+                {
                     lift.Top = (offset, top.Get("Rotation") is StructValue { Data: Quaternion turned } ? turned : Quaternion.Identity);
+                    // items go straight up or down from one end to the other
+                    var bottom = e.Transform.Translation;
+                    var upper = e.Transform.TransformPosition(offset);
+                    _beltPaths[e.InstanceName] = ([bottom, upper], [0, Distance(bottom, upper)]);
+                }
                 return;
             case BuildCategory.BeltSupport:
                 AddBox(e, info, Layers.Belts, "#8e6b3d");
@@ -530,7 +553,7 @@ public sealed class WorldExtractor
     }
 
     /// <summary>Converts the Hermite spline in mSplineData to a world space polyline. Returns its length.</summary>
-    private double AddSpline(SaveEntity e, BuildInfo info, LayerDef layer, double width, string color)
+    private double AddSpline(SaveEntity e, BuildInfo info, LayerDef layer, double width, string color, bool keepPath = false)
     {
         if (e.Properties.GetArray("mSplineData") is not { Items.Count: >= 2 } spline)
         {
@@ -545,16 +568,15 @@ public sealed class WorldExtractor
 
         var path = new List<double>(points.Count * 8);
         var heights = new List<double>(points.Count * 4);
+        var along = new List<double>(points.Count * 4);
         double length = 0;
         Vector3? previous = null;
         void Emit(Vector3 local)
         {
             var world = e.Transform.TransformPosition(local);
             if (previous is { } prev)
-            {
-                var d = world - prev;
-                length += Math.Sqrt(d.X * d.X + d.Y * d.Y + d.Z * d.Z);
-            }
+                length += Distance(world, prev);
+            along.Add(length);
             previous = world;
             path.Add(world.X);
             path.Add(world.Y);
@@ -573,6 +595,9 @@ public sealed class WorldExtractor
                 Emit(Hermite(p0, m0, p1, m1, (double)s / steps));
         }
 
+        if (keepPath)
+            _beltPaths[e.InstanceName] = ([.. Enumerable.Range(0, heights.Count).Select(i => new Vector3(path[i * 2], path[i * 2 + 1], heights[i]))], [.. along]);
+
         _world.Features.Add(new MapFeature
         {
             Layer = layer,
@@ -588,6 +613,58 @@ public sealed class WorldExtractor
         });
         return length;
     }
+
+    private static double Distance(Vector3 a, Vector3 b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y) + (a.Z - b.Z) * (a.Z - b.Z));
+
+    /// <summary>
+    /// The items on the belts. The save keeps them per chain of belts, each with how far along the chain it
+    /// is; every belt of the chain covers a stretch of that. On the belt the item lies on its path, turned the
+    /// way the belt runs.
+    /// </summary>
+    private void AddBeltItems()
+    {
+        foreach (var obj in _save.AllObjects)
+        {
+            if (obj.SpecialData is not ConveyorChainData { Items.Count: > 0 } chain)
+                continue;
+            var segments = chain.Segments.Where(s => _beltPaths.ContainsKey(s.Belt.PathName)).OrderBy(s => s.StartsAtLength).ToList();
+            if (segments.Count == 0)
+                continue;
+            foreach (var item in chain.Items)
+            {
+                int index = segments.FindLastIndex(s => s.StartsAtLength <= item.Position);
+                var segment = segments[Math.Max(index, 0)];
+                var (points, at) = _beltPaths[segment.Belt.PathName];
+                double span = segment.EndsAtLength - segment.StartsAtLength, total = at[^1];
+                if (span <= 0 || total <= 0 || points.Length < 2)
+                    continue;
+                double d = Math.Clamp((item.Position - segment.StartsAtLength) / span, 0, 1) * total;
+                int p = 0;
+                while (p + 2 < points.Length && at[p + 1] < d)
+                    p++;
+                double t = at[p + 1] > at[p] ? Math.Clamp((d - at[p]) / (at[p + 1] - at[p]), 0, 1) : 0;
+                var a = points[p];
+                var b = points[p + 1];
+                var direction = b - a;
+                double yaw = Math.Atan2(direction.Y, direction.X), flat = Math.Sqrt(direction.X * direction.X + direction.Y * direction.Y);
+                // a lift goes straight up: its items keep lying flat
+                double pitch = flat > Math.Abs(direction.Z) * 0.2 ? Math.Atan2(direction.Z, flat) : 0;
+                if (flat < 1)
+                    yaw = _objects.GetValueOrDefault(segment.Belt.PathName) is SaveEntity lift ? lift.Transform.Rotation.Yaw : 0;
+                // turned about z by the yaw, then nose up by the pitch (about y the other way round)
+                var turn = new Quaternion(0, 0, Math.Sin(yaw / 2), Math.Cos(yaw / 2));
+                var tilt = new Quaternion(0, Math.Sin(-pitch / 2), 0, Math.Cos(-pitch / 2));
+                string descriptor = Catalog.ShortName(item.Item);
+                _world.BeltItems.Add(new BeltItem(descriptor, a + direction * t, Multiply(turn, tilt)));
+            }
+        }
+    }
+
+    private static Quaternion Multiply(Quaternion a, Quaternion b) => new(
+        a.W * b.X + a.X * b.W + a.Y * b.Z - a.Z * b.Y,
+        a.W * b.Y - a.X * b.Z + a.Y * b.W + a.Z * b.X,
+        a.W * b.Z + a.X * b.Y - a.Y * b.X + a.Z * b.W,
+        a.W * b.W - a.X * b.X - a.Y * b.Y - a.Z * b.Z);
 
     private static Vector3 Hermite(Vector3 p0, Vector3 m0, Vector3 p1, Vector3 m1, double t)
     {
@@ -665,7 +742,7 @@ public sealed class WorldExtractor
             AddInventorySummary(details, inventory);
         Count(Catalog.VehicleName(e.ShortClassName));
         AddMarker(Layers.Vehicles, name, e.Transform.Translation, "#c56cf0", Catalog.VehicleName(e.ShortClassName), details: details,
-            icon: VehicleIcon(e.ShortClassName));
+            icon: VehicleIcon(e.ShortClassName), rotation: e.Transform.Rotation, model: e.ShortClassName);
     }
 
     private string? VehicleIcon(string shortClass) => shortClass switch
@@ -756,24 +833,28 @@ public sealed class WorldExtractor
     {
         var p = a.Properties;
         var details = new List<KeyValuePair<string, string>>();
-        string? resourcePath = a.LevelProp("resource");
+        string? resourcePath = a.LevelProp("resource")
+            ?? (p.GetNumber("mResourceDepositTableIndex") is { } index && index >= 0 && index < Catalog.DepositResources.Length
+                ? Catalog.DepositResources[(int)index] : null);
         if (resourcePath is not null)
-            details.Add(new("Resource", Catalog.ResourceName(resourcePath)));
+            details.Add(new("Resource", _game?.DisplayName(resourcePath) ?? Catalog.ResourceName(resourcePath)));
         if (p.GetNumber("mResourcesLeft") is { } left)
             details.Add(new("Resources left", left.ToString(Inv)));
         if (p.GetNumber("mMineAmount") is { } amount)
             details.Add(new("Mine amount", amount.ToString(Inv)));
         bool empty = p.GetBool("mIsEmptied") is true || p.GetNumber("mResourcesLeft") is 0;
         Count("Resource deposit");
-        AddMarker(Layers.Deposits, "Resource deposit", a.Position, "#95a5a6", empty ? "Emptied" : "Available", details: details, dimmed: empty,
-            icon: resourcePath is null ? null : _game?.ItemIcon(resourcePath));
+        string resource = resourcePath is null ? "Resource" : _game?.DisplayName(resourcePath) ?? Catalog.ResourceName(resourcePath);
+        AddMarker(Layers.Deposits, $"{resource} deposit", a.Position, "#95a5a6", empty ? "Emptied" : "Available", details: details, dimmed: empty,
+            icon: resourcePath is null ? null : _game?.ItemIcon(resourcePath), rotation: a.Rotation, scale: a.Scale,
+            model: empty || resourcePath is null ? null : GameModels.DepositClass(Catalog.ShortName(resourcePath)));
     }
 
     /// <summary>Power slugs, artifacts, hazards: present means not collected/destroyed yet.</summary>
     private void AddCollectible(WorldActor a, LayerDef layer, string name, string color, string group, string? itemIcon)
     {
         Count(name);
-        AddMarker(layer, name, a.Position, color, group, icon: itemIcon is null ? null : _game?.ItemIcon(itemIcon));
+        AddMarker(layer, name, a.Position, color, group, icon: itemIcon is null ? null : _game?.ItemIcon(itemIcon), rotation: a.Rotation, scale: a.Scale, model: a.Class);
     }
 
     private void AddDropPod(WorldActor a)
@@ -782,7 +863,7 @@ public sealed class WorldExtractor
         var details = new List<KeyValuePair<string, string>> { new("Opened", opened ? "yes" : "no") };
         Count("Crash site");
         AddMarker(Layers.DropPods, "Crash site", a.Position, "#feca57", opened ? "Opened" : "Unopened", details: details, dimmed: opened,
-            icon: _game?.ItemIcon("Desc_HardDrive_C") ?? _game?.MapIcon("pod"));
+            icon: _game?.ItemIcon("Desc_HardDrive_C") ?? _game?.MapIcon("pod"), rotation: a.Rotation, scale: a.Scale, model: a.Class);
     }
 
     private void AddPlant(WorldActor a, string name, string color, string itemIcon)
@@ -792,7 +873,8 @@ public sealed class WorldExtractor
             ?? (p.Get("mPickupItems") is StructValue { Data: PropertyList pl } ? pl.GetNumber("NumItems") : null);
         var details = remaining is { } r ? new List<KeyValuePair<string, string>> { new("Items", r.ToString(Inv)) } : null;
         Count(name);
-        AddMarker(Layers.Plants, name, a.Position, color, name, details: details, dimmed: remaining is 0, icon: _game?.ItemIcon(itemIcon));
+        AddMarker(Layers.Plants, name, a.Position, color, name, details: details, dimmed: remaining is 0, icon: _game?.ItemIcon(itemIcon),
+            rotation: a.Rotation, scale: a.Scale, model: a.Class);
     }
 
     private void AddItemPickup(WorldActor a)
@@ -811,7 +893,8 @@ public sealed class WorldExtractor
         }
         Count("Item pickup");
         AddMarker(Layers.Pickups, count > 1 ? $"{name} ×{count}" : name, a.Position, "#f8a5c2", "Item",
-            details: [new("Item", name), new("Amount", count.ToString(Inv))], icon: itemPath is null ? null : _game?.ItemIcon(itemPath));
+            details: [new("Item", name), new("Amount", count.ToString(Inv))], icon: itemPath is null ? null : _game?.ItemIcon(itemPath),
+            rotation: a.Rotation, model: itemPath is null ? null : GameModels.ItemClass(Catalog.ShortName(itemPath)));
     }
 
     private void AddCrate(WorldActor a)
@@ -820,7 +903,8 @@ public sealed class WorldExtractor
         if (a.Entity is { } entity && FindInventory(entity) is { } inventory)
             AddInventorySummary(details, inventory);
         Count("Crate");
-        AddMarker(Layers.Pickups, "Crate", a.Position, "#e15f41", "Crate", details: details, icon: _game?.MapIcon("deathcrate"));
+        AddMarker(Layers.Pickups, "Crate", a.Position, "#e15f41", "Crate", details: details, icon: _game?.MapIcon("deathcrate"),
+            rotation: a.Rotation, scale: a.Scale, model: a.Class);
     }
 
     private void AddFoliage(SaveEntity e)
@@ -912,7 +996,7 @@ public sealed class WorldExtractor
 
     private void AddMarker(LayerDef layer, string name, Vector3 position, string color, string group,
         List<KeyValuePair<string, string>>? details = null, bool dimmed = false, string? icon = null, string? ring = null, bool badge = false,
-        Quaternion? rotation = null)
+        Quaternion? rotation = null, Vector3? scale = null, string? model = null)
     {
         _world.Features.Add(new MapFeature
         {
@@ -921,6 +1005,8 @@ public sealed class WorldExtractor
             Name = name,
             Position = position,
             Rotation = rotation ?? Quaternion.Identity,
+            Scale = scale ?? new Vector3(1, 1, 1),
+            Model = model,
             Color = color,
             Group = group,
             Dimmed = dimmed,

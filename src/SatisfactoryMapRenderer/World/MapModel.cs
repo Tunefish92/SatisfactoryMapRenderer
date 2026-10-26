@@ -102,7 +102,16 @@ public sealed class MapFeature
 
     /// <summary>Small check mark on the marker (resource node is exploited).</summary>
     public bool Badge { get; init; }
+
+    /// <summary>Class of the 3D model that shows it in the 3D view (see GameModels); null for none.</summary>
+    public string? Model { get; init; }
+
+    /// <summary>Only for the 3D view: not a marker on the map (the pedestals of the artifacts).</summary>
+    public bool ModelOnly { get; init; }
 }
+
+/// <summary>An item on a belt: its descriptor class ("Desc_IronIngot_C"), where it is and which way the belt runs there.</summary>
+public readonly record struct BeltItem(string Item, Vector3 Position, Quaternion Rotation);
 
 public sealed class MapWorld
 {
@@ -118,7 +127,10 @@ public sealed class MapWorld
     /// <summary>Number of objects per display name (buildings, collectibles, resources...).</summary>
     public Dictionary<string, int> Counts { get; } = new(StringComparer.Ordinal);
 
-    public IEnumerable<MapFeature> In(LayerDef layer) => Features.Where(f => f.Layer == layer);
+    /// <summary>The items on the belts, for the 3D view.</summary>
+    public List<BeltItem> BeltItems { get; } = [];
+
+    public IEnumerable<MapFeature> In(LayerDef layer) => Features.Where(f => f.Layer == layer && !f.ModelOnly);
 }
 
 /// <summary>The in-game map covers this square (same bounds as the in-game map texture).</summary>

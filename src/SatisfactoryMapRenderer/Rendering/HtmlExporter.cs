@@ -285,6 +285,67 @@ public static class HtmlExporter
                 w.WriteEndArray();
                 w.WriteEndObject();
             }
+            if (library is not null)
+            {
+                // Things in the world that nobody built, in the game's own shapes. Per box as above; "markers"
+                // says for each which marker of the map it is, for what a click on it shows (-1: none).
+                foreach (var layer in WorldLayers3D)
+                {
+                    var markers = world.In(layer).Select((f, i) => (f, i)).ToDictionary(x => x.f, x => x.i);
+                    var shown = world.Features.Where(f => f.Layer == layer && f.Model is not null && library.Classes.ContainsKey(f.Model)).ToList();
+                    if (shown.Count == 0)
+                        continue;
+                    w.WriteStartObject();
+                    w.WriteString("id", layer.Id);
+                    w.WriteString("title", layer.Title);
+                    w.WriteBoolean("visible", true);
+                    w.WriteStartArray("boxes");
+                    foreach (var f in shown)
+                    {
+                        var r = f.Rotation;
+                        var (sizeX, sizeY, height, bottom) = ModelBox(library, f.Model!);
+                        foreach (double v in new[]
+                                 {
+                                     f.Position.X, f.Position.Y, f.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
+                                     f.Scale.X * 1000, f.Scale.Y * 1000, f.Scale.Z * 1000, sizeX, sizeY, height, bottom, Color(f.Color), Class(f.Model!),
+                                 })
+                            w.WriteNumberValue((long)Math.Round(v));
+                    }
+                    w.WriteEndArray();
+                    w.WriteStartArray("markers");
+                    foreach (var f in shown)
+                        w.WriteNumberValue(markers.GetValueOrDefault(f, -1));
+                    w.WriteEndArray();
+                    w.WriteStartArray("lines");
+                    w.WriteEndArray();
+                    w.WriteEndObject();
+                }
+
+                // What lies on the belts, each item in the game's shape for it.
+                var items = world.BeltItems.Where(i => library.Classes.ContainsKey(GameModels.ItemClass(i.Item))).ToList();
+                if (items.Count > 0)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("id", "beltItems");
+                    w.WriteString("title", "Items on belts");
+                    w.WriteBoolean("visible", true);
+                    w.WriteStartArray("boxes");
+                    foreach (var item in items)
+                    {
+                        var r = item.Rotation;
+                        foreach (double v in new[]
+                                 {
+                                     item.Position.X, item.Position.Y, item.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
+                                     1000, 1000, 1000, 40, 40, 20, 0, Color("#f0a030"), Class(GameModels.ItemClass(item.Item)),
+                                 })
+                            w.WriteNumberValue((long)Math.Round(v));
+                    }
+                    w.WriteEndArray();
+                    w.WriteStartArray("lines");
+                    w.WriteEndArray();
+                    w.WriteEndObject();
+                }
+            }
             w.WriteEndArray();
             w.WriteStartArray("colors");
             foreach (var color in colors.OrderBy(c => c.Value).Select(c => c.Key))
@@ -296,6 +357,28 @@ public static class HtmlExporter
             w.WriteEndObject();
         }
         stream.Write(";\n"u8);
+    }
+
+    /// <summary>Layers of the map whose things the 3D view shows in their own shape.</summary>
+    private static readonly LayerDef[] WorldLayers3D =
+        [Layers.Slugs, Layers.Artifacts, Layers.DropPods, Layers.Plants, Layers.Pickups, Layers.Deposits, Layers.Hazards, Layers.Creatures, Layers.Vehicles];
+
+    /// <summary>The box around a model, roughly: width, depth, height and how far its bottom is above its origin.</summary>
+    private static (double SizeX, double SizeY, double Height, double Bottom) ModelBox(ModelLibrary library, string cls)
+    {
+        double minX = 0, minY = 0, minZ = 0, maxX = 0, maxY = 0, maxZ = 0;
+        bool any = false;
+        foreach (var part in library.Classes[cls])
+        {
+            if (!library.Meshes.TryGetValue(part.Mesh, out var mesh))
+                continue;
+            double x0 = part.T[0] + mesh.Min[0] * part.S[0], y0 = part.T[1] + mesh.Min[1] * part.S[1], z0 = part.T[2] + mesh.Min[2] * part.S[2];
+            double x1 = x0 + mesh.Size[0] * part.S[0], y1 = y0 + mesh.Size[1] * part.S[1], z1 = z0 + mesh.Size[2] * part.S[2];
+            (minX, minY, minZ) = any ? (Math.Min(minX, x0), Math.Min(minY, y0), Math.Min(minZ, z0)) : (x0, y0, z0);
+            (maxX, maxY, maxZ) = any ? (Math.Max(maxX, x1), Math.Max(maxY, y1), Math.Max(maxZ, z1)) : (x1, y1, z1);
+            any = true;
+        }
+        return any ? (Math.Max(maxX - minX, 30), Math.Max(maxY - minY, 30), Math.Max(maxZ - minZ, 30), minZ) : (100, 100, 100, 0);
     }
 
     /// <summary>
@@ -514,7 +597,7 @@ public static class HtmlExporter
             w.WriteStringValue(IconUrl(key));
         w.WriteEndArray();
 
-        var byLayer = world.Features.GroupBy(f => f.Layer).ToDictionary(g => g.Key, g => g.ToList());
+        var byLayer = world.Features.Where(f => !f.ModelOnly).GroupBy(f => f.Layer).ToDictionary(g => g.Key, g => g.ToList());
         var legendIndex = new Dictionary<LayerDef, Dictionary<string, int>>();
 
         w.WriteStartArray("layers");

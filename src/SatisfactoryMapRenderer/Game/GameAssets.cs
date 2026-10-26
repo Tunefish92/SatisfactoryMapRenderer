@@ -463,6 +463,8 @@ public sealed class GameAssets : IDisposable
         if (!export.TryGetValue(out FPackageIndex root, "RootComponent") || root.IsNull || root.Load() is not { } component)
             return null;
         var location = component.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
+        var rotation = component.GetOrDefault("RelativeRotation", new FRotator(0, 0, 0)).Quaternion();
+        var scale = component.GetOrDefault("RelativeScale3D", new FVector(1, 1, 1));
         // Attached roots are rare for these actors; include the parent's offset when present.
         if (component.TryGetValue(out FPackageIndex parent, "AttachParent") && !parent.IsNull && parent.Load() is { } parentComponent)
             location += parentComponent.GetOrDefault("RelativeLocation", new FVector(0, 0, 0));
@@ -480,7 +482,12 @@ public sealed class GameAssets : IDisposable
             props["shrine"] = shrine.SubPathString.Split('.').Last();
 
         string label = export is AActor actor && !string.IsNullOrEmpty(actor.ActorLabel) ? actor.ActorLabel : export.Name;
-        return new LevelActor(export.ExportType, export.Name, label, location.X, location.Y, location.Z, props.Count > 0 ? props : null);
+        return new LevelActor(export.ExportType, export.Name, label, location.X, location.Y, location.Z, props.Count > 0 ? props : null)
+        {
+            // for the 3D view: rocks, crash sites, plants stand at any angle and in any size
+            Rotation = Math.Abs(rotation.W) > 0.99999 ? null : [Math.Round(rotation.X, 5), Math.Round(rotation.Y, 5), Math.Round(rotation.Z, 5), Math.Round(rotation.W, 5)],
+            Scale = scale.X == 1 && scale.Y == 1 && scale.Z == 1 ? null : [Math.Round(scale.X, 4), Math.Round(scale.Y, 4), Math.Round(scale.Z, 4)],
+        };
     }
 
     private static readonly HashSet<string> ResourceClasses = new(StringComparer.Ordinal)

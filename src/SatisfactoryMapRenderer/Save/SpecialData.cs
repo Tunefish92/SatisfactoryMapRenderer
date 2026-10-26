@@ -35,7 +35,18 @@ public sealed record ConveyorChainData(
     ObjectReference LastBelt,
     IReadOnlyList<ObjectReference> Belts,
     float TotalLength,
-    int ItemCount);
+    int ItemCount)
+{
+    /// <summary>Per belt of the chain, in the order of the belts: where on the chain it starts and ends.</summary>
+    public IReadOnlyList<ConveyorChainSegment> Segments { get; init; } = [];
+
+    /// <summary>The items on the chain: what they are and where on the chain they are.</summary>
+    public IReadOnlyList<ConveyorChainItem> Items { get; init; } = [];
+}
+
+public sealed record ConveyorChainSegment(ObjectReference Belt, float OffsetAtStart, float StartsAtLength, float EndsAtLength, int FirstItem, int LastItem, int IndexInChain);
+
+public sealed record ConveyorChainItem(string Item, float Position);
 
 /// <summary>Parses the class specific data that follows the property list of some objects.</summary>
 public static class SpecialDataReader
@@ -136,25 +147,28 @@ public static class SpecialDataReader
         var firstBelt = ObjectReference.Read(r);
         int segmentCount = r.ReadInt32();
         var belts = new List<ObjectReference>(segmentCount);
+        var segments = new List<ConveyorChainSegment>(segmentCount);
         for (int i = 0; i < segmentCount; i++)
         {
             ObjectReference.Read(r); // chain actor
-            belts.Add(ObjectReference.Read(r));
+            var belt = ObjectReference.Read(r);
+            belts.Add(belt);
             int points = r.ReadInt32();
             r.Skip(points * 9 * 8); // location, arrive + leave tangent (doubles)
-            r.Skip(3 * 4 + 3 * 4);  // offset/start/end lengths, first/last item index, index in chain
+            segments.Add(new ConveyorChainSegment(belt, r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32()));
         }
         float totalLength = r.ReadSingle();
         r.ReadInt32(); // number of items
         r.ReadInt32(); // first chain item index
         r.ReadInt32(); // last chain item index
         int itemCount = r.ReadInt32();
+        var items = new List<ConveyorChainItem>(itemCount);
         for (int i = 0; i < itemCount; i++)
         {
-            ObjectReference.Read(r);          // item descriptor
+            string item = ObjectReference.Read(r).PathName;
             propertyReader.ReadDynamicStruct(); // item state
-            r.ReadSingle();                   // position on the chain
+            items.Add(new ConveyorChainItem(item, r.ReadSingle()));
         }
-        return new ConveyorChainData(firstBelt, lastBelt, belts, totalLength, itemCount);
+        return new ConveyorChainData(firstBelt, lastBelt, belts, totalLength, itemCount) { Segments = segments, Items = items };
     }
 }

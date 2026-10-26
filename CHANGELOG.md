@@ -11,6 +11,17 @@
 * 2D map: no more broken-image squares along the right edge of the bundled ground and relief maps. The
   browser asked for a column of tiles just past the map, which does not exist.
 * README: how to get the dedicated server's API token.
+* 3D view: the items on the belts and lifts, each in the game's own shape for it, where the save has them.
+* 3D view: the world around the factory in the game's own models: power slugs, Somersloops and Mercer Spheres
+  with their shrines, crash sites, berry bushes, nut bushes and mushrooms, resource piles, spore flowers, gas
+  pillars, destructible rocks, crates, items on the ground, creatures and vehicles. A click on one shows its
+  details. Each kind is a layer of its own.
+* 3D view: large buildings in finer detail, and no more buildings missing whole surfaces. The Geothermal
+  Generator, Foundry and AWESOME Sink were drawn from levels of detail far too coarse for their size, and the
+  Crafting Bench from one without its body.
+* Resource piles to mine by hand: which resource they hold, shown in their name and details.
+* After an update covering several versions, the "what is new" window names the version you saw last and the
+  current one.
 
 ## 0.2.2 – 2026-10-12
 
