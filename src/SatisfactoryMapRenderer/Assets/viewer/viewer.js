@@ -192,7 +192,9 @@
     },
     createTile(coords, done) {
       const key = `${coords.z}/${coords.x}/${coords.y}`;
-      if (!this.whole && !this.available.has(key)) {
+      // rounding can put the world's edge a hair into the next tile, which no layer has
+      const outside = Math.max(coords.x, coords.y) >= 2 ** coords.z || Math.min(coords.x, coords.y) < 0;
+      if (outside || (!this.whole && !this.available.has(key))) {
         const empty = document.createElement('div');
         setTimeout(() => done(null, empty), 0);
         return empty;
@@ -201,7 +203,7 @@
       img.alt = '';
       img.decoding = 'async';
       img.onload = () => done(null, img);
-      img.onerror = () => done(null, img);
+      img.onerror = () => { img.style.visibility = 'hidden'; done(null, img); }; // no broken-image icon
       img.src = `${this.path}/${key}.${this.layer.tiles.ext}`;
       return img;
     },

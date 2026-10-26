@@ -8,6 +8,8 @@
   health, game state (session, players, tech tier, phase, milestone, play time, tick rate) and options. Admins
   also get a console for server commands, with a list of the server's own commands and options, and
   buttons that shut the server down.
+* 2D map: no more broken-image squares along the right edge of the bundled ground and relief maps. The
+  browser asked for a column of tiles just past the map, which does not exist.
 * README: how to get the dedicated server's API token.
 
 ## 0.2.2 – 2026-10-12
