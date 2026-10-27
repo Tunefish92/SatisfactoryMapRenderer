@@ -49,6 +49,10 @@ Reads saves from Update 5 up to 1.2.4.
 |---|---|
 | ![The whole world as a 3D landscape](docs/screenshots/3d-world.jpg) | ![A factory in 3D with machines, belts and foundations](docs/screenshots/3d-factory.jpg) |
 
+| 3D view: items on the belts, in the game's own shapes | 3D view: crash sites, slugs, plants and creatures where they are |
+|---|---|
+| ![Foundries with ore and coal on their belts in the 3D view](docs/screenshots/3d-belts.jpg) | ![A crash site with its hard drive and scattered items in the 3D view](docs/screenshots/3d-crash-site.jpg) |
+
 ![Water extractors and pipes in the 3D view](docs/screenshots/3d-water.jpg)
 
 ## Installation
