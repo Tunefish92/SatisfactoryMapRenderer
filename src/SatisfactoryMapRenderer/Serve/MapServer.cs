@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SatisfactoryMapRenderer.Save;
 
 namespace SatisfactoryMapRenderer.Serve;
@@ -38,6 +39,54 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
     private volatile Progress _progress = new("", 0);
 
     private void Report(string stage, int percent) => _progress = new Progress(stage, Math.Clamp(percent, 0, 100));
+
+    /// <summary>
+    /// The render at start that brings a map from an older version up to date. Every visitor's page shows it,
+    /// with the console's lines, and can only be used once it is over.
+    /// </summary>
+    private volatile bool _startupRunning, _startupFailed, _startupFinished;
+    private readonly List<string> _startupLog = [];
+    private const int StartupLogLines = 2000;
+
+    /// <summary>Absolute paths of the server's file system; visitors see only the file's name.</summary>
+    private static readonly Regex AbsolutePath = new(@"(?<![\w:/.])(?:/[^\s/]+)+/([^\s/]+)|\b[A-Za-z]:\\(?:[^\s\\]+\\)*([^\s\\]+)", RegexOptions.Compiled);
+
+    /// <summary>A line of the console while the map is rendered at start.</summary>
+    public void StartupLog(string line)
+    {
+        line = AbsolutePath.Replace(line, m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value);
+        lock (_startupLog)
+            if (_startupLog.Count < StartupLogLines)
+                _startupLog.Add(line);
+    }
+
+    /// <summary>
+    /// Renders the map again while the pages already show how far it has come; loading another save waits
+    /// until it is done. Call before <see cref="RunAsync"/>, so that the first page already knows.
+    /// </summary>
+    public async Task RenderAtStartAsync(Action<Action<string, int>> work, CancellationToken cancel)
+    {
+        _startupRunning = true;
+        await _busy.WaitAsync(cancel);
+        try
+        {
+            Report("Starting", 0);
+            await Task.Run(() => work(Report), cancel);
+            Report("Done", 100);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _startupFailed = true;
+            StartupLog($"Could not render the map again: {ex.Message}");
+            log($"Could not render the map again ({ex.Message}); load or refresh the save game in the page.");
+        }
+        finally
+        {
+            _startupFinished = true;
+            _startupRunning = false;
+            _busy.Release();
+        }
+    }
 
     private readonly ConcurrentDictionary<string, DateTime> _sessions = new(StringComparer.Ordinal);
     private readonly object _loginLock = new(), _settingsLock = new();
@@ -117,6 +166,21 @@ public sealed class MapServer(string outputDirectory, string stateDirectory, int
                 await WriteJsonAsync(response, 200, IsAdmin(request) ? Describe() : new { Admin = false, LoginRequired = true, _source.Kind, _source.LoadedAt });
             else if (path == "/api/serverstats" && request.HttpMethod == "GET")
                 await WriteJsonAsync(response, 200, await ServerStatsAsync(cancel));
+            else if (path == "/api/startup" && request.HttpMethod == "GET")
+            {
+                // The render at start, for everybody: the page is blocked until it is over. "from" is the number
+                // of console lines the page has already.
+                int from = int.TryParse(request.QueryString["from"], out int f) ? Math.Max(f, 0) : 0;
+                string[] lines;
+                lock (_startupLog)
+                    lines = [.. _startupLog.Skip(from)];
+                var progress = _progress;
+                await WriteJsonAsync(response, 200, new
+                {
+                    Running = _startupRunning, Finished = _startupFinished, Failed = _startupFailed,
+                    progress.Stage, progress.Percent, From = from, Lines = lines,
+                });
+            }
             else if (path == "/api/progress" && request.HttpMethod == "GET")
             {
                 // How far the save that is being loaded has come; polled by the admin's page for its progress bar.

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using SatisfactoryMapRenderer.Game;
 using SatisfactoryMapRenderer.Rendering;
 using SatisfactoryMapRenderer.Save;
@@ -307,6 +308,7 @@ internal static class Program
             Console.WriteLine($"Done in {sw.Elapsed.TotalSeconds:0.0}s.");
         }, Console.WriteLine, o.Bind, o.AdminPassword, BaseMaps(o)?.Directory);
 
+        string? renderAgain = null;
         if (o.SavePath.Length > 0)
         {
             Render(o, o.SavePath, game);
@@ -322,7 +324,7 @@ internal static class Program
             if (renderedBy != HtmlExporter.Version)
                 File.WriteAllText(Path.Combine(o.Output!, HtmlExporter.UpdatedFromFile), renderedBy);
             HtmlExporter.RefreshViewer(o.Output!, game);
-            RenderAgainAfterUpdate(o, game);
+            renderAgain = SaveToRenderAgain(o);
         }
 
         using var stop = new CancellationTokenSource();
@@ -331,6 +333,25 @@ internal static class Program
             e.Cancel = true;
             stop.Cancel();
         };
+        // The page is there at once; while the map is rendered again it shows how far that has come, with
+        // the lines of the console.
+        if (renderAgain is not null)
+            _ = server.RenderAtStartAsync(progress =>
+            {
+                var console = Console.Out;
+                Console.SetOut(TextWriter.Synchronized(new TeeWriter(console, server.StartupLog)));
+                try
+                {
+                    Console.WriteLine($"The map on disk was rendered by another version; rendering it again from {renderAgain}");
+                    var sw = Stopwatch.StartNew();
+                    Render(o, renderAgain, game, progress);
+                    Console.WriteLine($"Done in {sw.Elapsed.TotalSeconds:0.0}s.");
+                }
+                finally
+                {
+                    Console.SetOut(console);
+                }
+            }, stop.Token);
         try
         {
             server.RunAsync(stop.Token).GetAwaiter().GetResult();
@@ -350,31 +371,57 @@ internal static class Program
 
     /// <summary>
     /// A map on disk that another version rendered lacks what this version adds (base maps, the 3D view).
-    /// The save it was made from is usually still in the cache: render it again.
+    /// The save it was made from is usually still in the cache: that one is to be rendered again.
     /// </summary>
-    private static void RenderAgainAfterUpdate(Options o, GameAssets? game)
+    private static string? SaveToRenderAgain(Options o)
     {
         string stamp = Path.Combine(o.Output!, RenderedStamp);
         if (File.Exists(stamp) && File.ReadAllText(stamp).Trim() == HtmlExporter.Version)
-            return;
+            return null;
         var name = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(o.Output!, "map-data.js")), "\"fileName\":\"([^\"]*)\"");
         if (!name.Success || name.Groups[1].Value.Length == 0)
-            return;
+            return null;
         string save = Path.Combine(o.CacheDirectory, "saves", Path.GetFileName(System.Text.RegularExpressions.Regex.Unescape(name.Groups[1].Value)));
-        if (!File.Exists(save))
+        if (File.Exists(save))
+            return save;
+        Console.WriteLine("The map on disk was rendered by another version; load or refresh the save game to get everything this version shows.");
+        return null;
+    }
+
+    /// <summary>Writes to the console and hands every finished line to another reader as well.</summary>
+    private sealed class TeeWriter(TextWriter inner, Action<string> line) : TextWriter
+    {
+        private readonly StringBuilder _pending = new();
+
+        public override Encoding Encoding => inner.Encoding;
+
+        public override void Write(char value)
         {
-            Console.WriteLine("The map on disk was rendered by another version; load or refresh the save game to get everything this version shows.");
-            return;
+            inner.Write(value);
+            Collect(value);
         }
-        Console.WriteLine($"The map on disk was rendered by another version; rendering it again from {save}");
-        try
+
+        public override void Write(string? value)
         {
-            Render(o, save, game);
+            inner.Write(value);
+            foreach (char c in value ?? "")
+                Collect(c);
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+
+        public override void WriteLine(string? value) => Write((value ?? "") + "\n");
+
+        private void Collect(char c)
         {
-            Console.Error.WriteLine($"Could not render the map again ({ex.Message}); load or refresh the save game in the page.");
+            if (c != '\n')
+            {
+                _pending.Append(c);
+                return;
+            }
+            line(_pending.ToString().TrimEnd('\r'));
+            _pending.Clear();
         }
+
+        public override void Flush() => inner.Flush();
     }
 
     /// <param name="progress">Told what is being done and how far along the whole render is, in percent.</param>

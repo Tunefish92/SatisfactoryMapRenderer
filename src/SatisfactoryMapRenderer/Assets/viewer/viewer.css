@@ -1143,3 +1143,65 @@ button.danger:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
 #server-list-items button small { display: block; margin-top: 1px; font: 11.5px/1.35 var(--font-body, inherit); color: var(--color-text-muted); }
 #server-list-items button em { flex: none; font: 500 10.5px var(--font-heading); color: var(--color-text-muted); }
 #server-list-items button code { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
+
+/* ---- The map being rendered again at start: blocks the page until it is done */
+#startup-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--color-bg) 50%, transparent);
+  backdrop-filter: blur(12px) saturate(0.85);
+  -webkit-backdrop-filter: blur(12px) saturate(0.85);
+  animation: load-fade .3s var(--ease) both;
+}
+.startup-card {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(820px, 100%);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: placeholder-in .45s var(--ease) both;
+}
+.startup-card header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 26px 18px;
+  background: linear-gradient(135deg, var(--color-primary-soft), transparent 70%);
+  border-bottom: 1px solid var(--color-border);
+}
+.startup-card header .load-logo { margin: 0; flex: none; }
+.startup-card h2 { margin: 0; font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; text-transform: none; color: var(--color-text); }
+.startup-body { display: flex; flex-direction: column; min-height: 0; padding: 18px 26px 6px; }
+.startup-intro { margin: 0 0 14px; color: var(--color-text-muted); font-size: 14px; line-height: 1.5; }
+.startup-body .load-stage { margin: 0 0 10px; color: var(--color-text); font-weight: 600; }
+.startup-log {
+  flex: 1;
+  min-height: 160px;
+  max-height: 340px;
+  margin: 16px 0 12px;
+  padding: 12px 14px;
+  overflow: auto;
+  border-radius: var(--r-sm);
+  border: 1px solid #1f2937;
+  background: #0b0f14;
+  color: #d1d5db;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.startup-card footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 26px; border-top: 1px solid var(--color-border); }
+.startup-done { margin: 0; color: var(--color-text-muted); font-size: 13.5px; }
+#startup-ok { padding: 9px 30px; font-size: 14px; }
+#startup-ok:disabled { opacity: 0.45; cursor: progress; }
+#startup-modal.failed .progress-bar { background: #dc2626; }
+#startup-modal.failed .startup-done { color: #b91c1c; }
+@media (prefers-reduced-motion: reduce) { #startup-modal, .startup-card { animation: none; } }
+@media (max-width: 600px) { .startup-card header, .startup-body, .startup-card footer { padding-left: 16px; padding-right: 16px; } }
