@@ -2,6 +2,8 @@
 
 # Satisfactory Map Renderer
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy_me_a_coffee-PayPal-0070ba?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/tunefish92)
+
 **An interactive map of your Satisfactory save game, in your browser.**
 
 A self-hosted web app: one Docker container reads a save game, renders the whole factory into a zoomable map and
@@ -314,6 +316,14 @@ docs/SAVE_FORMAT.md   save file format reference, including all version differen
 Releases: a tag `v1.2.3` builds the image for amd64 and arm64 and publishes it to GHCR and, when the repository
 variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` are set, to Docker Hub. A tag with a hyphen
 (`v1.3.0-beta.1`) is a pre-release and does not move `latest`.
+
+## Buy me a coffee
+
+Satisfactory Map Renderer is free and open source, and it will stay that way. If it makes your factory nicer to look at and you'd like to say thanks, you can buy me a coffee:
+
+**☕ [paypal.me/tunefish92](https://paypal.me/tunefish92)**
+
+It's entirely voluntary and a thank-you only: it doesn't buy features, priority support or a warranty, and the software stays under the MIT licence either way. Please don't send money as "Friends and Family" on PayPal.
 
 ## A note about this project
 
