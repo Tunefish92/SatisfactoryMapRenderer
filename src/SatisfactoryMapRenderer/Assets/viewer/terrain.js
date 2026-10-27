@@ -493,6 +493,9 @@
     uniform vec3 flatColor, primaryPaint, secondaryPaint;
     uniform sampler2D albedo, paintMask;
     uniform bool masked;            // the surface has a mask of where it is painted: green first colour, blue second
+    uniform bool glowing;           // the surface glows where its glow map is light, in glowColor
+    uniform sampler2D glowMap;
+    uniform vec3 glowColor;
     uniform sampler2DArray factoryLayers;
     out vec4 color;
     void main() {
@@ -524,13 +527,15 @@
       vec3 n = normalize(vNormal);
       float light = 0.40 + 0.50 * max(dot(n, sun), 0.0) + 0.12 * n.y;
       float fog = smoothstep(0.55, 1.6, distance(vWorld, eye) / 900000.0);
-      color = vec4(mix(base * light, haze, fog * 0.55), 1.0);
+      vec3 lit = base * light;
+      if (glowing && kind == 1) lit += glowColor * texture(glowMap, vUv).r;
+      color = vec4(mix(lit, haze, fog * 0.55), 1.0);
     }`);
 
   // Materials: texture images load in the background and appear when they are there.
   const hex = c => { const n = parseInt(String(c).slice(1), 16) || 0x9aa0a6; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
   const srgb = c => c.map(v => Math.pow(v, 1.0)); // colours are used as they are, like the textures
-  const materials = (F && F.materials || []).map(([kind, value, mask]) => {
+  const materials = (F && F.materials || []).map(([kind, value, mask, glow, glowColor]) => {
     const textured = kind.startsWith('texture');
     // pipes in the paint they have as standard, FICSIT orange
     const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : kind === 'texture-painted' ? (value.startsWith('TX_Pipe_') ? [0.93, 0.50, 0.20] : [0.98, 0.58, 0.29]) : [0.62, 0.64, 0.66], texture: null };
@@ -548,6 +553,22 @@
         material.texture = t;
         needsDraw = true;
       }).catch(() => { /* stays grey */ });
+      if (glow) {
+        material.glowColor = hex(glowColor);
+        loadImage(`terrain/textures/${glow}`).then(img => {
+          const t = gl.createTexture();
+          gl.activeTexture(gl.TEXTURE7);
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.activeTexture(gl.TEXTURE0);
+          material.glow = t;
+          needsDraw = true;
+        }).catch(() => { /* does not glow */ });
+      }
       if (mask) {
         loadImage(`terrain/textures/${mask}`).then(img => {
           const t = gl.createTexture();
@@ -831,7 +852,8 @@
         const boundsMin = m('boundsMin'), boundsSize = m('boundsSize'), kind = m('kind'), flatColor = m('flatColor');
         gl.uniform1i(m('albedo'), 2);
         gl.uniform1i(m('paintMask'), 6);
-        const masked = m('masked');
+        const masked = m('masked'), glowing = m('glowing'), glowColor = m('glowColor');
+        gl.uniform1i(m('glowMap'), 7);
         gl.uniform1i(m('factoryLayers'), 3);
         gl.uniform3fv(m('primaryPaint'), [0.98, 0.58, 0.29]);   // the factory's standard colours: FICSIT orange
         gl.uniform3fv(m('secondaryPaint'), [0.37, 0.40, 0.55]); // and blue-grey
@@ -851,6 +873,11 @@
             if ((material.kind === 1 || material.kind === 3) && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
             gl.uniform1i(masked, material.mask ? 1 : 0);
             if (material.mask) { gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, material.mask); gl.activeTexture(gl.TEXTURE2); }
+            gl.uniform1i(glowing, material.glow ? 1 : 0);
+            if (material.glow) {
+              gl.uniform3fv(glowColor, material.glowColor);
+              gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, material.glow); gl.activeTexture(gl.TEXTURE2);
+            }
             gl.drawElementsInstanced(gl.TRIANGLES, section.count, item.indexType, section.first * item.indexBytes, item.count);
           }
         }

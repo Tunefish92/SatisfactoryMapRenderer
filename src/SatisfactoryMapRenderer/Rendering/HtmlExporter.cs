@@ -421,20 +421,25 @@ public static class HtmlExporter
         }
         w.WriteEndArray();
 
-        // per material: kind, then the texture's file name or the colour, then the paint mask's file name if it has one
+        // per material: kind, then the texture's file name or the colour, then the paint mask's file name if it has
+        // one ("" if not), then for a surface that glows the file name of where it does and the colour
         w.WriteStartArray("materials");
         foreach (var material in materials.OrderBy(m => m.Value).Select(m => library.Materials[m.Key]))
         {
             w.WriteStartArray();
             w.WriteStringValue(material.Kind);
             w.WriteStringValue(material.Texture ?? material.Color ?? "");
-            if (material.Mask is not null)
-                w.WriteStringValue(material.Mask);
+            if (material.Mask is not null || material.Glow is not null)
+                w.WriteStringValue(material.Mask ?? "");
+            if (material.Glow is not null)
+            {
+                w.WriteStringValue(material.Glow);
+                w.WriteStringValue(material.GlowColor ?? "#ffffff");
+            }
             w.WriteEndArray();
-            if (material.Texture is not null)
-                CopyTexture(material.Texture);
-            if (material.Mask is not null)
-                CopyTexture(material.Mask);
+            foreach (string? file in new[] { material.Texture, material.Mask, material.Glow })
+                if (file is not null)
+                    CopyTexture(file);
         }
         w.WriteEndArray();
 

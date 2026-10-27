@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
@@ -36,7 +37,15 @@ public sealed record ModelMesh(int V, int I, bool Wide, long VertexOffset, long 
 /// For a texture: a second image that says where the paint goes, green for the first colour and blue for
 /// the second (red is shading). Null if the surface is not painted.
 /// </param>
-public sealed record ModelMaterial(string Name, string Kind, string? Texture, string? Color, string? Root = null, string? Mask = null);
+public sealed record ModelMaterial(string Name, string Kind, string? Texture, string? Color, string? Root = null, string? Mask = null)
+{
+    /// <summary>Grey image of where the surface glows, and the colour it glows in; null where it does not.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Glow { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? GlowColor { get; init; }
+}
 
 /// <summary>A mesh placed inside a building: translation (cm), rotation (quaternion x y z w) and scale, in the building's own space.</summary>
 public sealed record ModelPart(string Mesh, double[] T, double[] R, double[] S);
@@ -50,7 +59,7 @@ public sealed class ModelLibrary
     public const string IndexFile = "models.json", DataFile = "models.bin";
 
     /// <summary>Raised when the layout of models.bin or the meaning of the index changes.</summary>
-    public const int FormatVersion = 3;
+    public const int FormatVersion = 4;
     public const string TextureDirectory = "textures";
 
     public int Version { get; set; }
@@ -305,12 +314,15 @@ public static class GameModels
         ReadPlayer(archive, library, meshObjects, detailed);
         ReadItems(archive, library, meshObjects, items);
         ReadWorldActors(archive, library, meshObjects, slotOverrides);
-        // there are thousands of them all over the map: as coarse as the pieces of belts
+        // There are thousands of some of them all over the map: as coarse as the pieces of belts. The others
+        // (crash sites, shrines, vehicles) are few, and looked at from close by; creatures as large as they are.
         foreach (var (name, parts) in library.Classes)
-            if (name.StartsWith("BP_", StringComparison.Ordinal) || name.StartsWith("Char_", StringComparison.Ordinal) && name != PlayerClass
-                || name.StartsWith("Deposit:", StringComparison.Ordinal))
+        {
+            bool coarse = CoarseActors.Any(c => name.StartsWith(c, StringComparison.Ordinal));
+            if (coarse || WorldActors.Any(a => name == a + "_C"))
                 foreach (var part in parts)
-                    repeated.Add(part.Mesh);
+                    (coarse ? repeated : detailed).Add(part.Mesh);
+        }
 
         // A building made from another building (the power tower with a platform from the power tower) only
         // holds what it adds or changes; the rest is the other building's. Buildings that list their meshes
@@ -476,6 +488,10 @@ public static class GameModels
         "BP_GasPillar_05", "BP_DestructibleLargeRock", "BP_DestructibleSmallRock", "BP_DestructibleFlatRock", "BP_Crate", "BP_WreckCrate",
         "BP_Truck", "BP_Tractor", "BP_Explorer", "BP_Locomotive", "BP_FreightWagon", "BP_DroneTransport", "BP_Golfcart", "BP_GolfcartGold",
     ];
+
+    /// <summary>World objects there are thousands of, small and seen from afar; the others (crash sites, shrines) are few and large.</summary>
+    private static readonly string[] CoarseActors =
+        ["BP_Crystal", "BP_BerryBush", "BP_NutBush", "BP_Shroom", "BP_SporeFlower", "BP_GasPillar", "BP_Destructible", "Deposit:"];
 
     /// <summary>Meshes of these world objects that the game places or shows itself only at times (the berries on a bush).</summary>
     private static readonly string[] HiddenActorMeshes = ["SM_Berry_01"];
@@ -853,6 +869,11 @@ public static class GameModels
                 return null;
             if (chain.Any(c => SkippedMaterials.Any(s => c.Name.Contains(s, StringComparison.OrdinalIgnoreCase))))
                 return null;
+            // Light added on top or a shimmer seen through (the rings of a Mercer Sphere), and surfaces the game
+            // has dissolved completely, are no surfaces here. Glass is see-through too, but lit.
+            if (chain.Last() is UMaterial { BlendMode: EBlendMode.BLEND_Additive or EBlendMode.BLEND_Modulate } or UMaterial { BlendMode: EBlendMode.BLEND_Translucent, ShadingModel: EMaterialShadingModel.MSM_Unlit }
+                || chain.OfType<UMaterialInstanceConstant>().SelectMany(i => i.ScalarParameterValues ?? []).FirstOrDefault(v => v.ParameterInfo.Name.Text == "Dissolve") is { ParameterValue: >= 1 })
+                return null;
 
             if (chain.Any(c => c.Name == FactoryMaterial))
             {
@@ -889,7 +910,9 @@ public static class GameModels
                     // Painted surfaces: the texture is dark where the paint goes and shows the bare metal elsewhere.
                     bool painted = PaintedMaterials.Contains(chain.Last().Name);
                     string? mask = PaintMask(chain);
-                    return new ModelMaterial(name, mirrored ? "texture-mirrored" : painted ? "texture-painted" : "texture", file, null, chain.Last().Name, painted ? null : mask);
+                    var (glow, glowColor) = Glow(chain);
+                    return new ModelMaterial(name, mirrored ? "texture-mirrored" : painted ? "texture-painted" : "texture", file, null, chain.Last().Name, painted ? null : mask)
+                        { Glow = glow, GlowColor = glowColor };
                 }
             }
             if (chain.Last() is UMaterial root)
@@ -908,8 +931,53 @@ public static class GameModels
                 : name.Contains("Glass", StringComparison.OrdinalIgnoreCase) ? "#9fc4d8"
                 : name.Contains("Concrete", StringComparison.OrdinalIgnoreCase) ? "#a9a9a4"
                 : name.Contains("Rubber", StringComparison.OrdinalIgnoreCase) ? "#2b2b2d"
+                : name.Contains("MercerSphere", StringComparison.OrdinalIgnoreCase) ? "#7a3e9d"
                 : "#9aa0a6";
             return new ModelMaterial(name, "flat", null, color, chain.Last().Name);
+        }
+
+        /// <summary>
+        /// Where a surface glows and in which colour: the emissive channel (blue) of its MREA map (metal,
+        /// roughness, emissive, ambient occlusion), in the material's emissive colour. Null where it does not glow.
+        /// </summary>
+        private (string? File, string? Color) Glow(List<UObject> chain)
+        {
+            var instances = chain.OfType<UMaterialInstanceConstant>().ToList();
+            var color = instances.SelectMany(i => i.VectorParameterValues ?? []).FirstOrDefault(v => v.ParameterInfo.Name.Text == "EmissiveColor");
+            var map = instances.SelectMany(i => i.TextureParameterValues ?? []).FirstOrDefault(v => v.ParameterInfo.Name.Text == "ReflectionMap"
+                                                                                                  && v.ParameterValue.ResolvedObject?.Name.Text.EndsWith("_MREA", StringComparison.OrdinalIgnoreCase) == true);
+            if (color?.ParameterValue is not { } c || map?.ParameterValue.ResolvedObject is not { } texture)
+                return (null, null);
+            double strength = instances.SelectMany(i => i.ScalarParameterValues ?? []).FirstOrDefault(v => v.ParameterInfo.Name.Text == "EmissiveStrength")?.ParameterValue ?? 1;
+            // far less than the game's bloom, which a plain colour cannot show: enough to light up the dark
+            double scale = Math.Clamp(strength, 0, 4) * 0.35;
+            static int Channel(double v) => (int)Math.Clamp(Math.Round(Math.Pow(Math.Clamp(v, 0, 1), 1 / 2.2) * 255), 0, 255);
+            string name = texture.Name.Text + "_Glow";
+            if (!_textures.TryGetValue(name, out string? file))
+                _textures[name] = file = SaveChannel(name, map.ParameterValue.Load() as UTexture, 2);
+            return file is null ? (null, null) : (file, $"#{Channel(c.R * scale):x2}{Channel(c.G * scale):x2}{Channel(c.B * scale):x2}");
+        }
+
+        /// <summary>One channel of a texture (0 red … 3 alpha) as a grey image.</summary>
+        private string? SaveChannel(string name, UTexture? texture, int channel)
+        {
+            if (texture is null)
+                return null;
+            using var bitmap = GameArchive.Decode(texture, TextureSize);
+            if (bitmap is null)
+                return null;
+            using var grey = new SKBitmap(bitmap.Width, bitmap.Height, SKColorType.Gray8, SKAlphaType.Opaque);
+            for (int y = 0; y < bitmap.Height; y++)
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    var p = bitmap.GetPixel(x, y);
+                    byte v = channel switch { 0 => p.Red, 1 => p.Green, 2 => p.Blue, _ => p.Alpha };
+                    grey.SetPixel(x, y, new SKColor(v, v, v));
+                }
+            string file = string.Concat(name.Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? c : '_')) + ".jpg";
+            using var stream = File.Create(Path.Combine(textureDirectory, file));
+            grey.Encode(stream, SKEncodedImageFormat.Jpeg, 85);
+            return file;
         }
 
         /// <summary>
