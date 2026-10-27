@@ -198,7 +198,7 @@ public static class HtmlExporter
                              {
                                  f.Position.X, f.Position.Y, f.Position.Z, r.X * 10000, r.Y * 10000, r.Z * 10000, r.W * 10000,
                                  f.Scale.X * 1000, f.Scale.Y * 1000, f.Scale.Z * 1000,
-                                 f.SizeX, f.SizeY, height, baseOffset, Color(f.Color), Class(f.Class),
+                                 f.SizeX, f.SizeY, height, baseOffset, Color(f.Color), Class(f.Model ?? f.Class),
                              })
                         w.WriteNumberValue((long)Math.Round(v));
                 }

@@ -489,7 +489,8 @@
     in vec3 vNormal, vWorld, vTint;
     in vec2 vUv;
     uniform vec3 eye, sun, haze;
-    uniform int kind;               // 0 one colour, 1 texture image, 2 the game's shared factory material, 3 painted texture
+    uniform int kind;               // 0 one colour, 1 texture image, 2 the game's shared factory material, 3 painted texture, 4 glass
+    uniform float opacity;          // below 1 for glass, drawn after everything else
     uniform vec3 flatColor, primaryPaint, secondaryPaint;
     uniform sampler2D albedo, paintMask;
     uniform bool masked;            // the surface has a mask of where it is painted: green first colour, blue second
@@ -529,7 +530,7 @@
       float fog = smoothstep(0.55, 1.6, distance(vWorld, eye) / 900000.0);
       vec3 lit = base * light;
       if (glowing && kind == 1) lit += glowColor * texture(glowMap, vUv).r;
-      color = vec4(mix(lit, haze, fog * 0.55), 1.0);
+      color = vec4(mix(lit, haze, fog * 0.55), opacity);
     }`);
 
   // Materials: texture images load in the background and appear when they are there.
@@ -538,7 +539,7 @@
   const materials = (F && F.materials || []).map(([kind, value, mask, glow, glowColor]) => {
     const textured = kind.startsWith('texture');
     // pipes in the paint they have as standard, FICSIT orange
-    const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : 0, color: kind === 'flat' ? srgb(hex(value)) : kind === 'texture-painted' ? (value.startsWith('TX_Pipe_') ? [0.93, 0.50, 0.20] : [0.98, 0.58, 0.29]) : [0.62, 0.64, 0.66], texture: null };
+    const material = { kind: kind === 'texture-painted' ? 3 : textured ? 1 : kind === 'factory' ? 2 : kind === 'glass' ? 4 : 0, color: kind === 'flat' || kind === 'glass' ? srgb(hex(value)) : kind === 'texture-painted' ? (value.startsWith('TX_Pipe_') ? [0.93, 0.50, 0.20] : [0.98, 0.58, 0.29]) : [0.62, 0.64, 0.66], texture: null };
     if (textured && modelData) {
       loadImage(`terrain/textures/${value}`).then(img => {
         const t = gl.createTexture();
@@ -859,28 +860,38 @@
         gl.uniform3fv(m('secondaryPaint'), [0.37, 0.40, 0.55]); // and blue-grey
         if (factoryTexture) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D_ARRAY, factoryTexture); }
         gl.activeTexture(gl.TEXTURE2);
-        for (const item of meshInstances) {
-          if (!item.layer.visible) continue;
-          gl.uniform3fv(boundsMin, item.min);
-          gl.uniform3fv(boundsSize, item.size);
-          gl.bindVertexArray(item.vao);
-          for (const section of item.sections) {
-            const material = section.material || { kind: 0, color: [0.62, 0.64, 0.66] };
-            // until its image is there, a textured surface is drawn in plain grey
-            const ready = material.kind === 1 || material.kind === 3 ? material.texture : material.kind === 2 ? factoryTexture : true;
-            gl.uniform1i(kind, ready ? material.kind : 0);
-            gl.uniform3fv(flatColor, material.color);
-            if ((material.kind === 1 || material.kind === 3) && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
-            gl.uniform1i(masked, material.mask ? 1 : 0);
-            if (material.mask) { gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, material.mask); gl.activeTexture(gl.TEXTURE2); }
-            gl.uniform1i(glowing, material.glow ? 1 : 0);
-            if (material.glow) {
-              gl.uniform3fv(glowColor, material.glowColor);
-              gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, material.glow); gl.activeTexture(gl.TEXTURE2);
+        const opacity = m('opacity');
+        // Glass last, half transparent over what is behind it, without hiding what is drawn after it.
+        for (const glass of [false, true]) {
+          gl.uniform1f(opacity, glass ? 0.45 : 1);
+          if (glass) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); }
+          for (const item of meshInstances) {
+            if (!item.layer.visible) continue;
+            if (glass && !item.sections.some(section => section.material?.kind === 4)) continue;
+            gl.uniform3fv(boundsMin, item.min);
+            gl.uniform3fv(boundsSize, item.size);
+            gl.bindVertexArray(item.vao);
+            for (const section of item.sections) {
+              const material = section.material || { kind: 0, color: [0.62, 0.64, 0.66] };
+              if ((material.kind === 4) !== glass) continue;
+              // until its image is there, a textured surface is drawn in plain grey
+              const ready = material.kind === 1 || material.kind === 3 ? material.texture : material.kind === 2 ? factoryTexture : true;
+              gl.uniform1i(kind, ready && material.kind !== 4 ? material.kind : 0); // glass is one colour
+              gl.uniform3fv(flatColor, material.color);
+              if ((material.kind === 1 || material.kind === 3) && material.texture) gl.bindTexture(gl.TEXTURE_2D, material.texture);
+              gl.uniform1i(masked, material.mask ? 1 : 0);
+              if (material.mask) { gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, material.mask); gl.activeTexture(gl.TEXTURE2); }
+              gl.uniform1i(glowing, material.glow ? 1 : 0);
+              if (material.glow) {
+                gl.uniform3fv(glowColor, material.glowColor);
+                gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, material.glow); gl.activeTexture(gl.TEXTURE2);
+              }
+              gl.drawElementsInstanced(gl.TRIANGLES, section.count, item.indexType, section.first * item.indexBytes, item.count);
             }
-            gl.drawElementsInstanced(gl.TRIANGLES, section.count, item.indexType, section.first * item.indexBytes, item.count);
           }
         }
+        gl.disable(gl.BLEND);
+        gl.depthMask(true);
         gl.activeTexture(gl.TEXTURE0);
       }
     }

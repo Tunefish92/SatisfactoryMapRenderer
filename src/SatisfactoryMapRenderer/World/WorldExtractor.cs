@@ -511,9 +511,23 @@ public sealed class WorldExtractor
             Group = info.Category.ToString(),
             Details = details,
             Icon = icon,
+            Model = PoleModel(e),
         };
         _world.Features.Add(feature);
         return feature;
+    }
+
+    /// <summary>
+    /// Conveyor poles and pipe and hypertube supports: the model of the pole height chosen when building (the
+    /// lowest one when the save does not say, as it leaves out what is as by default). Null for other buildings.
+    /// </summary>
+    private string? PoleModel(SaveEntity e)
+    {
+        if (_game?.Models is not { } models || !models.Classes.ContainsKey(GameModels.PoleClass(e.ShortClassName, 0)))
+            return null;
+        int version = (int)(e.Properties.GetNumber("mSelectedPoleVersion") ?? 0);
+        string model = GameModels.PoleClass(e.ShortClassName, version);
+        return models.Classes.ContainsKey(model) ? model : GameModels.PoleClass(e.ShortClassName, 0);
     }
 
     private void AddLightweightBuildables(SaveEntity e)

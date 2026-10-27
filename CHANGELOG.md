@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+* 3D view: hypertubes with their glass tube, and glass in general (pipeline pumps, train windows, glass
+  buildings) half transparent. Only the rings of hypertubes were drawn.
+* 3D view: conveyor poles and the supports of pipelines and hypertubes in the game's models, at the height
+  each was built with; they were boxes. Sign poles too.
+
 ## 0.2.4 – 2026-10-27
 
 * After an update, the page can be used at once: while the server renders the map again, everybody who opens

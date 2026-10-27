@@ -59,7 +59,7 @@ public sealed class ModelLibrary
     public const string IndexFile = "models.json", DataFile = "models.bin";
 
     /// <summary>Raised when the layout of models.bin or the meaning of the index changes.</summary>
-    public const int FormatVersion = 4;
+    public const int FormatVersion = 5;
     public const string TextureDirectory = "textures";
 
     public int Version { get; set; }
@@ -216,6 +216,32 @@ public static class GameModels
                     library.Classes[name + "_C"] = [Part(piece, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1))];
                     library.Splines[name + "_C"] = length;
                     repeated.Add(piece);
+                    continue;
+                }
+
+                // Conveyor poles and the supports of pipes and hypertubes: a pole of the height chosen when
+                // building (one class per height, "#" and its number), with the clamp the pipe lies in on top.
+                if (defaults is not null && defaults.TryGetValue(out FStructFallback[] variations, "mPoleVariations") && variations.Length > 0)
+                {
+                    ModelPart? clamp = null;
+                    if (defaults.TryGetValue(out FStructFallback top, "mSupportMeshInstanceData") && top.TryGetValue(out FPackageIndex topIndex, "StaticMesh")
+                        && Mesh(topIndex, meshObjects) is { } topMesh)
+                    {
+                        var t = top.GetOrDefault("RelativeTransform", FTransform.Identity);
+                        clamp = Part(topMesh, t.Translation, t.Rotation, t.Scale3D);
+                    }
+                    for (int i = 0; i < variations.Length; i++)
+                    {
+                        if (!variations[i].TryGetValue(out FPackageIndex poleIndex, "StaticMesh") || Mesh(poleIndex, meshObjects) is not { } pole)
+                            continue;
+                        double height = variations[i].GetOrDefault<float>("Height");
+                        var poleParts = new List<ModelPart> { Part(pole, new FVector(0, 0, 0), FQuat.Identity, new FVector(1, 1, 1)) };
+                        if (clamp is not null)
+                            poleParts.Add(clamp with { T = [clamp.T[0], clamp.T[1], Round(clamp.T[2] + height)] });
+                        library.Classes[PoleClass(name + "_C", i)] = poleParts;
+                        if (i == 0)
+                            library.Classes[name + "_C"] = poleParts;
+                    }
                     continue;
                 }
 
@@ -444,6 +470,9 @@ public static class GameModels
             // Without the model, players are only labelled.
         }
     }
+
+    /// <summary>Class of the model library for a pole or support of the given height variation.</summary>
+    public static string PoleClass(string buildable, int variation) => $"{buildable}#{variation}";
 
     /// <summary>Class of the model library for an item on a belt: "Item:" and the item's descriptor class.</summary>
     public static string ItemClass(string descriptor) => "Item:" + descriptor;
@@ -869,8 +898,16 @@ public static class GameModels
                 return null;
             if (chain.Any(c => SkippedMaterials.Any(s => c.Name.Contains(s, StringComparison.OrdinalIgnoreCase))))
                 return null;
+            // See-through glass (the tube of a hypertube): drawn half transparent, in its colour.
+            if (chain.Last() is UMaterial { BlendMode: EBlendMode.BLEND_Translucent } && chain.Any(c => c.Name.Contains("Glass", StringComparison.OrdinalIgnoreCase)))
+            {
+                var glass = chain.OfType<UMaterialInstanceConstant>().SelectMany(i => i.VectorParameterValues ?? [])
+                    .FirstOrDefault(v => v.ParameterInfo.Name.Text is "GlassColor" or "Color" or "Tint")?.ParameterValue;
+                static int Channel(double v) => (int)Math.Clamp(Math.Round(Math.Pow(Math.Clamp(v, 0, 1), 1 / 2.2) * 255), 0, 255);
+                return new ModelMaterial(name, "glass", null, glass is { } g ? $"#{Channel(g.R):x2}{Channel(g.G):x2}{Channel(g.B):x2}" : "#b9d3df", chain.Last().Name);
+            }
             // Light added on top or a shimmer seen through (the rings of a Mercer Sphere), and surfaces the game
-            // has dissolved completely, are no surfaces here. Glass is see-through too, but lit.
+            // has dissolved completely, are no surfaces here.
             if (chain.Last() is UMaterial { BlendMode: EBlendMode.BLEND_Additive or EBlendMode.BLEND_Modulate } or UMaterial { BlendMode: EBlendMode.BLEND_Translucent, ShadingModel: EMaterialShadingModel.MSM_Unlit }
                 || chain.OfType<UMaterialInstanceConstant>().SelectMany(i => i.ScalarParameterValues ?? []).FirstOrDefault(v => v.ParameterInfo.Name.Text == "Dissolve") is { ParameterValue: >= 1 })
                 return null;
