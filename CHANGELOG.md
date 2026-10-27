@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 – 2026-10-27
 
 * After an update, the page can be used at once: while the server renders the map again, everybody who opens
   it sees how far that has come, with the lines of the server's console, and nothing behind it can be used.
   When it is done, OK opens the new map.
+* The project's logo everywhere: the loading, update and "what is new" windows and the 3D view showed an
+  older one.
 * 3D view: surfaces glow where the game has them glow (the purple veins of the Mercer Spheres' shrines).
 * 3D view: the Mercer Spheres' shrines no longer stand on a grey square, and the spheres are no longer grey: the
   glow effects around them are left out, as the game's fully dissolved ground plate is.

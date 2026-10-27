@@ -27,7 +27,7 @@
   // With game data the game's own icon is the logo; the bundled one is the fallback.
   if (D.logo) {
     document.querySelector('.placeholder-logo').src = D.logo;
-    document.querySelector('.load-logo').src = D.logo;
+    for (const logo of document.querySelectorAll('.load-logo')) logo.src = D.logo; // what is new, loading a save
     document.querySelector('#sidebar header .logo').src = D.logo;
     document.querySelector('link[rel=icon]').href = D.logo;
     document.querySelector('link[rel=icon]').type = 'image/png';

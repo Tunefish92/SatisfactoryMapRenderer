@@ -20,7 +20,7 @@
     modal.innerHTML = `
       <div class="startup-card">
         <header>
-          <img class="load-logo" src="logo.svg" width="52" height="52" alt="">
+          <img class="load-logo" src="${(window.MAP_DATA || {}).logo || 'logo.png'}" width="52" height="52" alt="">
           <div>
             <p class="news-kicker">Updated</p>
             <h2 id="startup-title">Bringing the map up to date</h2>

@@ -521,7 +521,7 @@ public static class HtmlExporter
         using var image = SKImage.FromBitmap(icon);
         canvas.DrawImage(image, new SKRect(0, 0, size, size), new SKSamplingOptions(SKCubicResampler.Mitchell));
 
-        // The pin of the bundled logo (logo.svg, 64-unit grid), with its tip at the lower right.
+        // The pin of the project's logo (drawn on a 64-unit grid), with its tip at the lower right.
         using var pin = SKPath.ParseSvgPathData("M32 9 a10 10 0 0 1 10 10 c0 7 -7.2 12.6 -10 17 c-2.8 -4.4 -10 -10 -10 -17 a10 10 0 0 1 10 -10 Z");
         const float scale = 5.0f, tipX = 192, tipY = 250;
         pin.Transform(SKMatrix.CreateScale(scale, scale).PostConcat(SKMatrix.CreateTranslation(tipX - 32 * scale, tipY - 36 * scale)));
