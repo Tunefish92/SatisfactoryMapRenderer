@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.5 – 2026-10-27
 
 * 3D view: hypertubes with their glass tube, and glass in general (pipeline pumps, train windows, glass
   buildings) half transparent. Only the rings of hypertubes were drawn.
