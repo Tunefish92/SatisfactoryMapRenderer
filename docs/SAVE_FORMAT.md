@@ -19,7 +19,7 @@ unless stated otherwise.
 | 51 | 1.1 | Each sub-level has its own save version |
 | 53 | 1.1 | Package/engine version data (enables UE 5.4+ property tags) |
 | 57/58 | 1.2 | New player-info-handle serialization |
-| 59/60 | 1.2.4 | Data fix-ups on load only; no format change. Verified against a 1.2.4 dedicated server save (build 502094) |
+| 59/60 | 1.2.4, 1.2.4.1 | Data fix-ups on load only; no format change. Verified against dedicated server saves of 1.2.4 (build 502094) and 1.2.4.1 (build 513885) |
 
 ## Basic types
 
@@ -206,6 +206,15 @@ buildable instances inside the subsystem above.
 
 * The resource type and purity of ore nodes, the positions of standing trees, and the terrain.
   These come from the game's level data. The renderer infers a node's resource from the extractor
-  built on it (its output inventory). The map outline comes from the fog-of-war texture
+  built on it (its output inventory). The exception are sessions whose game modes (1.2+) change the
+  nodes: there every node, well core and well satellite stores what it became in
+  `mResourceClassOverride` (resource descriptor) and `mPurityOverride` (`EResourcePurity`), and these
+  beat the level data. The settings themselves are on `BP_GameState_C`: `mNodeRandomization`
+  (`ENodeRandomizationMode`: `NRM_Strict` = Random, `NRM_BasicReach`, `NRM_AdvancedRich`,
+  `NRM_FossilFuelRich`), `mNodePuritySettings` (`ENodePuritySettings`: `NPS_AllPure`, `NPS_Increase`,
+  `NPS_AllNormal`, `NPS_Decrease`, `NPS_AllImpure`, `NPS_AllRandom`) and the world seed
+  `mNodeRandomizationSeed` (int32). Each is left out when it is the default (no seed chosen, `NRM_None`,
+  `NPS_NoChange`); a session with the game's own nodes stores none of them and no overrides. Verified
+  against 1.2.4.1 dedicated server saves (build 513885). The map outline comes from the fog-of-war texture
   (`FGMapManager.mFogOfWarRawData`, 512×512 RGBA, exploration in the third byte), which covers the
   same area as the in-game map: X −324 698.83…425 301.83, Y −375 000…375 000 (Unreal units = cm).

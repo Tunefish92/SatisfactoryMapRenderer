@@ -13,7 +13,7 @@
 &#xD;
 The save game is chosen in the web UI by an admin: upload a .sav file, fetch it from a running dedicated server through its HTTPS API (game version 1.0 or newer, API token from server.GenerateAPIToken), or copy it over SSH. A "Refresh snapshot" button fetches the current state again. Visitors only see the map.&#xD;
 &#xD;
-Reads saves from Update 5 up to 1.2.4. Works out of the box: the game's icons, names and in-game map (from Satisfactory 1.2.4) are included.</Overview>
+Reads saves from Update 5 up to 1.2.4.1. Works out of the box: the game's icons, names and in-game map (from Satisfactory 1.2.4.1) are included.</Overview>
   <Category>GameServers: Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Tunefish92/unraid-templates/main/templates/satisfactory-map-renderer.xml</TemplateURL>

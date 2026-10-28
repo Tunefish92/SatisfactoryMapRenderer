@@ -56,7 +56,7 @@ again. Visitors who are not logged in only see the map.
 
 The image works out of the box: it brings the game's icons, names, resource data, 3D models, and three base maps
 already cut into tiles (a ground map and a relief map at 32768 px, and the in-game map), exported from
-Satisfactory 1.2.4. If your game is newer than that, mount your Satisfactory installation at `/game` (read-only)
+Satisfactory 1.2.4.1. If your game is newer than that, mount your Satisfactory installation at `/game` (read-only)
 and the data is exported from it once into the data folder.
 
 ## Settings
@@ -75,5 +75,5 @@ and the data is exported from it once into the data folder.
 The container speaks plain HTTP on port 8080. To reach it from the internet, put it behind a reverse
 proxy that adds HTTPS, so the admin password is not sent unencrypted.
 
-Reads saves from Update 5 up to 1.2.4. Not affiliated with or endorsed by Coffee Stain Studios; the game's icons
+Reads saves from Update 5 up to 1.2.4.1. Not affiliated with or endorsed by Coffee Stain Studios; the game's icons
 and map included in the image are their property.

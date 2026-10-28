@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+* Resource nodes of sessions with game modes (1.2+): with random nodes, resource-rich distributions or another
+  node purity, the map shows each node, well and well satellite as the session has it, not as the game places
+  them by default. The settings and the world seed are listed under the save game's details and below the
+  resource nodes layer, and the seed also in the card at the top right. The rocks of the nodes in the 3D view
+  keep their default look.
+* The card at the top right shows the full session and save name; long names wrap instead of being cut off.
+* Tested with Satisfactory 1.2.4.1 (build 513885): its saves (still save version 60) are read in full, and
+  dedicated servers running it count as supported. The game data that comes with the image is unchanged in this
+  version (no new items, buildings or level changes) and is now marked as 1.2.4.1.
+
 ## 0.2.5 – 2026-10-27
 
 * 3D view: hypertubes with their glass tube, and glass in general (pipeline pumps, train windows, glass

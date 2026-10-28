@@ -29,7 +29,7 @@ public enum SaveCustomVersion
     NewPlayerInfoHandleSerializationFormat = 57,
     FixNewPlayerInfoHandleSerializationFormat = 58,  // 1.2
     FixedUpInvalidPatternRotationsBlueprintSupport = 59,
-    FixedMissingFICSITMaterials = 60,                // 1.2.4; 59 and 60 only migrate data on load
+    FixedMissingFICSITMaterials = 60,                // 1.2.4 and 1.2.4.1; 59 and 60 only migrate data on load
 }
 
 /// <summary>The "save header version" – controls which header fields exist.</summary>
@@ -53,6 +53,9 @@ public static class UnrealVersions
     /// <summary>Oldest and newest save version the parser was written and tested for.</summary>
     public const int OldestSupportedSave = (int)SaveCustomVersion.SaveFileIsCompressed;
     public const int NewestSupportedSave = (int)SaveCustomVersion.FixedMissingFICSITMaterials;
+
+    /// <summary>The newest game version whose saves were tested: 1.2.4.1, build 513885.</summary>
+    public const string NewestTestedGame = "1.2.4.1";
 
     public static string GameVersionName(int saveVersion) => saveVersion switch
     {

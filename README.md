@@ -39,7 +39,7 @@ Bugs: [Issues](https://github.com/Tunefish92/SatisfactoryMapRenderer/issues) ·
   * **SSH** to the machine that holds the saves.
 * **Visitors only see the map.** Choosing and refreshing the save needs the admin password.
 
-Reads saves from Update 5 up to 1.2.4.
+Reads saves from Update 5 up to 1.2.4.1.
 
 | Zoomed in: buildings with their icons, belts, click for details | Dark theme, statistics |
 |---|---|
@@ -216,7 +216,7 @@ the same command can be typed into the server's own console.
 ## Game icons and the in-game map
 
 The image works **out of the box**: it brings the game's icons, item and building names, resource data and the
-in-game map, exported from Satisfactory 1.2.4. No game installation is needed.
+in-game map, exported from Satisfactory 1.2.4.1. No game installation is needed.
 
 The **3D view** button beside the zoom buttons opens the 3D view: the game's height data as a landscape, and
 the factory in the game's own 3D models, placed with the positions and rotations from the save.
@@ -300,7 +300,7 @@ dotnet test --solution SatisfactoryMapRenderer.slnx          # parser, extractio
 node tests/viewer/viewer-smoke.mjs <output>/index.html       # clicks through the viewer in a headless browser
 ```
 
-* The tests build complete synthetic `.sav` files in memory for 10 save versions (Update 5 → 1.2.4, both property
+* The tests build complete synthetic `.sav` files in memory for 10 save versions (Update 5 → 1.2.4.1, both property
   tag formats); each is parsed, turned into map features and exported to tiles. Corrupt and truncated files must
   produce a clean `SaveFormatException`.
 * `RealSaveTests` checks real saves for full decoding: set `SMR_TEST_SAVES=a.sav;b.sav`.

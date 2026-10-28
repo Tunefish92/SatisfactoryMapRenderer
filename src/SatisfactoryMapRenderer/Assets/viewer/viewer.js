@@ -15,6 +15,11 @@
     document.getElementById('status-session').textContent = D.title;
     const saveName = D.saveName || (D.fileName || '').replace(/\.sav$/i, '');
     if (saveName && saveName !== D.title) document.getElementById('status-save').textContent = saveName;
+    if (D.nodeRandomization?.seed !== undefined) {
+      const seed = document.getElementById('status-seed');
+      seed.textContent = `Seed ${D.nodeRandomization.seed}`;
+      seed.hidden = false;
+    }
     if (D.savedAt) {
       const saved = new Date(D.savedAt);
       const time = document.getElementById('status-time');
@@ -446,6 +451,17 @@
       legend.appendChild(item);
     });
     container.appendChild(legend);
+
+    // Game modes (1.2+) can shuffle the nodes; say so where they are listed, with the seed to share the world.
+    if (layer.id === 'resources' && D.nodeRandomization) {
+      const { nodes, purity, seed } = D.nodeRandomization;
+      const note = document.createElement('div');
+      note.className = 'layer-note';
+      const settings = [nodes !== 'Default' && `${nodes} nodes`, purity !== 'Default' && `${purity} purity`].filter(Boolean).join(' · ');
+      note.innerHTML = `<span>${esc(settings || 'Default nodes')}</span>`
+        + (seed !== undefined ? `<span class="seed" title="World seed">Seed <b>${seed}</b></span>` : '');
+      container.appendChild(note);
+    }
 
     row.querySelector('.expand').addEventListener('click', e => {
       legend.hidden = !legend.hidden;

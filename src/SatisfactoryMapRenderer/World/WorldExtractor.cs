@@ -189,6 +189,7 @@ public sealed class WorldExtractor
                         _playerInfoNames.Add(platforms?.Select(p => (p as StructValue)?.Data is PropertyList platform ? platform.GetText("PlayerName") : null)
                             .FirstOrDefault(n => n is { Length: > 0 }) ?? "");
                     }
+                    _world.NodeRandomization = ReadNodeRandomization(props);
                     break;
                 case "BP_Train_C":
                 case "FGTrain":
@@ -803,11 +804,13 @@ public sealed class WorldExtractor
 
     private void AddResourceNode(WorldActor a, string kind, string? fixedResource = null)
     {
-        string? resourcePath = a.LevelProp("resource")
+        // Randomized nodes (game modes, 1.2+) keep what they were turned into in the save; it beats the level data.
+        string? resourcePath = SavedReference(a.Properties, "mResourceClassOverride")
+            ?? a.LevelProp("resource")
             ?? _nodeResource.GetValueOrDefault(a.Name)
-            ?? (a.Properties.Get("mResourceClass") is ObjectReference { IsEmpty: false } rc ? rc.PathName : null);
+            ?? SavedReference(a.Properties, "mResourceClass");
         string? resource = fixedResource ?? (resourcePath is null ? null : Catalog.ResourceName(resourcePath));
-        string? purity = PurityName(a.LevelProp("purity") ?? a.Properties.GetText("mPurity"));
+        string? purity = PurityName(a.Properties.GetText("mPurityOverride") ?? a.LevelProp("purity") ?? a.Properties.GetText("mPurity"));
 
         var details = new List<KeyValuePair<string, string>> { new("Type", kind), new("Resource", resource ?? "unknown (not stored in save)") };
         if (purity is not null)
@@ -824,6 +827,45 @@ public sealed class WorldExtractor
             details: details, dimmed: resource is null,
             icon: resourcePath is null ? null : _game?.ItemIcon(resourcePath), ring: PurityColor(purity), badge: occupied);
     }
+
+    /// <summary>
+    /// The resource node settings of the game modes (1.2+). The game state stores only what differs from the
+    /// game's own nodes, and the seed only when one was chosen; nothing at all means the game's own nodes.
+    /// </summary>
+    private static NodeRandomization? ReadNodeRandomization(PropertyList gameState)
+    {
+        string? nodes = gameState.GetText("mNodeRandomization")?.Split("::").Last();
+        string? purity = gameState.GetText("mNodePuritySettings")?.Split("::").Last();
+        int? seed = gameState.GetNumber("mNodeRandomizationSeed") is { } s ? (int)s : null;
+        if (nodes is null or "NRM_None" && purity is null or "NPS_NoChange" && seed is null)
+            return null;
+        return new NodeRandomization(NodeRandomizationName(nodes), NodePurityName(purity), seed);
+    }
+
+    private static string NodeRandomizationName(string? mode) => mode switch
+    {
+        null or "NRM_None" => "Default",
+        "NRM_Strict" => "Random",
+        "NRM_BasicReach" => "Basic resource rich",
+        "NRM_AdvancedRich" => "Advanced resource rich",
+        "NRM_FossilFuelRich" => "Fossil fuel rich",
+        var other => other.Replace("NRM_", ""),
+    };
+
+    private static string NodePurityName(string? purity) => purity switch
+    {
+        null or "NPS_NoChange" => "Default",
+        "NPS_AllPure" => "All pure",
+        "NPS_Increase" => "Mostly pure",
+        "NPS_AllNormal" => "Average",
+        "NPS_Decrease" => "Mostly impure",
+        "NPS_AllImpure" => "All impure",
+        "NPS_AllRandom" => "Random",
+        var other => other.Replace("NPS_", ""),
+    };
+
+    private static string? SavedReference(PropertyList p, string name) =>
+        p.Get(name) is ObjectReference { IsEmpty: false } reference ? reference.PathName : null;
 
     /// <summary>The game spells the lowest purity "RP_Inpure".</summary>
     private static string? PurityName(string? purity) => purity?.Split("::").Last() switch
@@ -1122,6 +1164,13 @@ public sealed class WorldExtractor
             s.Add(new("Modded", "yes"));
         if (h.IsCreativeModeEnabled)
             s.Add(new("Creative mode", "yes"));
+        if (_world.NodeRandomization is { } random)
+        {
+            s.Add(new("Resource nodes", random.Nodes));
+            s.Add(new("Node purity", random.Purity));
+            if (random.Seed is { } seed)
+                s.Add(new("World seed", seed.ToString(Inv)));
+        }
 
         string? phase = _save.AllObjects.FirstOrDefault(o => o.ShortClassName == "BP_GamePhaseManager_C")?.Properties.GetText("mGamePhase");
         if (phase is not null)

@@ -579,6 +579,15 @@ public static class HtmlExporter
             w.WriteString("saveName", header.SaveName);
         if (header.SaveDateTimeUtc != default)
             w.WriteString("savedAt", header.SaveDateTimeUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture));
+        if (world.NodeRandomization is { } random)
+        {
+            w.WriteStartObject("nodeRandomization");
+            w.WriteString("nodes", random.Nodes);
+            w.WriteString("purity", random.Purity);
+            if (random.Seed is { } seed)
+                w.WriteNumber("seed", seed);
+            w.WriteEndObject();
+        }
 
         w.WriteStartObject("world");
         w.WriteNumber("minX", WorldBounds.MinX);

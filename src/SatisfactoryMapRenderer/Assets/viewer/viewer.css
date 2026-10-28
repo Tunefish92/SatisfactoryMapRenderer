@@ -314,6 +314,17 @@ input[type=checkbox] { accent-color: var(--color-primary); }
   border-left: 2px solid var(--color-border);
 }
 .legend[hidden] { display: none; }
+.layer-note {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  margin: 0 6px 4px 30px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.layer-note .seed { font-variant-numeric: tabular-nums; user-select: all; }
+.layer-note .seed b { color: var(--color-text); font-weight: 600; }
 .legend .layer-row { padding: 1px 0; font-size: 12px; }
 
 .option { display: flex; gap: 8px; align-items: center; margin-top: 8px; color: var(--color-text-muted); cursor: pointer; }
@@ -601,7 +612,7 @@ body.empty .leaflet-control-container { display: none; }
   top: 12px;
   right: 12px;
   z-index: 950;
-  max-width: min(420px, calc(100vw - var(--sidebar-width) - 90px));
+  max-width: min(560px, calc(100vw - var(--sidebar-width) - 190px)); /* clear of the zoom and 3D buttons */
   padding: 9px 14px 10px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -613,14 +624,15 @@ body.empty .leaflet-control-container { display: none; }
   box-shadow: var(--shadow-md);
   pointer-events: auto;
 }
-.status-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; font: 600 14px var(--font-heading); letter-spacing: -0.01em; }
-.status-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status-name #status-session { flex: none; max-width: 100%; }
+/* The whole name is shown: long names wrap instead of being cut off. */
+.status-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; font: 600 14px var(--font-heading); letter-spacing: -0.01em; }
+.status-name span { min-width: 0; overflow-wrap: anywhere; }
 .status-name .muted { font: 400 12.5px var(--font-body); letter-spacing: 0; }
-.status-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
+#status-seed { align-self: center; font-variant-numeric: tabular-nums; user-select: all; }
+.status-meta { grid-column: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
 #status-source { align-self: center; background: var(--color-primary-soft); color: var(--color-primary); }
 #status-source::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
-body.collapsed #statusbar { max-width: min(420px, calc(100vw - 80px)); }
+body.collapsed #statusbar { max-width: min(560px, calc(100vw - 190px)); }
 @media (max-width: 700px) { #statusbar { max-width: calc(100vw - 70px); } body:not(.collapsed) #statusbar { display: none; } }
 
 /* ---- Progress of a save game being fetched and rendered */

@@ -113,6 +113,12 @@ public sealed class MapFeature
 /// <summary>An item on a belt: its descriptor class ("Desc_IronIngot_C"), where it is and which way the belt runs there.</summary>
 public readonly record struct BeltItem(string Item, Vector3 Position, Quaternion Rotation);
 
+/// <summary>
+/// The game mode settings for resource nodes, as the new-game menu names them. The seed is null when the save
+/// does not store one.
+/// </summary>
+public sealed record NodeRandomization(string Nodes, string Purity, int? Seed);
+
 public sealed class MapWorld
 {
     public required SaveGame Save { get; init; }
@@ -123,6 +129,9 @@ public sealed class MapWorld
     public int FogOfWarSize { get; set; }
 
     public List<KeyValuePair<string, string>> Summary { get; } = [];
+
+    /// <summary>How the session shuffled its resource nodes (game modes, 1.2+); null for the game's own nodes.</summary>
+    public NodeRandomization? NodeRandomization { get; set; }
 
     /// <summary>Number of objects per display name (buildings, collectibles, resources...).</summary>
     public Dictionary<string, int> Counts { get; } = new(StringComparer.Ordinal);

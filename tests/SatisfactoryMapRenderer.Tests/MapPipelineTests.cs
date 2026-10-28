@@ -66,6 +66,62 @@ public sealed class MapPipelineTests
     }
 
     [Fact]
+    public void Randomized_nodes_use_the_resource_and_purity_stored_in_the_save()
+    {
+        // As a 1.2 dedicated server writes them for "Random" nodes and "Mostly impure" purity, seed 424242.
+        var save = new SyntheticSave(14, 60);
+        save.Persistent.Add(new TestObject
+        {
+            Class = "/Game/FactoryGame/-Shared/Blueprint/BP_GameState.BP_GameState_C",
+            Instance = TestScene.Level + "BP_GameState_C_2147473330",
+            Properties =
+            [
+                new PEnum("mNodeRandomization", "ENodeRandomizationMode", "ENodeRandomizationMode::NRM_Strict"),
+                new PEnum("mNodePuritySettings", "ENodePuritySettings", "ENodePuritySettings::NPS_Decrease"),
+                new PInt("mNodeRandomizationSeed", 424242),
+            ],
+        });
+        save.Persistent.Add(new TestObject
+        {
+            Class = "/Game/FactoryGame/Resource/BP_ResourceNode.BP_ResourceNode_C",
+            Instance = TestScene.Node,
+            X = 30000, Y = 30000,
+            Properties =
+            [
+                new PEnum("mPurityOverride", "EResourcePurity", "RP_Inpure"),
+                new PInt("mResourcesLeft", -1),
+                new PObj("mResourceClassOverride", "/Game/FactoryGame/Resource/RawResources/OreUranium/Desc_OreUranium.Desc_OreUranium_C"),
+            ],
+        });
+        string path = save.WriteToTempFile();
+        MapWorld world;
+        try
+        {
+            world = WorldExtractor.Extract(SaveGameReader.Load(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        var node = Assert.Single(world.In(Layers.Resources));
+        Assert.Equal("Uranium · Impure", node.Group);
+        Assert.Contains(new KeyValuePair<string, string>("Purity", "Impure"), node.Details!);
+        Assert.Equal(new NodeRandomization("Random", "Mostly impure", 424242), world.NodeRandomization);
+        Assert.Contains(world.Summary, s => s is { Key: "Resource nodes", Value: "Random" });
+        Assert.Contains(world.Summary, s => s is { Key: "Node purity", Value: "Mostly impure" });
+        Assert.Contains(world.Summary, s => s is { Key: "World seed", Value: "424242" });
+    }
+
+    [Fact]
+    public void The_game_s_own_nodes_show_no_randomization()
+    {
+        var world = Extract(14, 60);
+        Assert.Null(world.NodeRandomization);
+        Assert.DoesNotContain(world.Summary, s => s.Key == "World seed");
+    }
+
+    [Fact]
     public void Exports_viewer_tiles_and_data()
     {
         var world = Extract(14, 58);

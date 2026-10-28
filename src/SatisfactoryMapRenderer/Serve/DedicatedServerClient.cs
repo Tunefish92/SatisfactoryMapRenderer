@@ -19,7 +19,7 @@ public sealed record ServerCheck(string Compatibility, string Message, string? S
 {
     /// <summary>Shown next to the form so the user knows what works before trying.</summary>
     public static string SupportedVersions =>
-        $"The HTTPS API exists on dedicated servers from game version 1.0 on; 1.0, 1.1 and 1.2 are supported " +
+        $"The HTTPS API exists on dedicated servers from game version 1.0 on; 1.0 up to {UnrealVersions.NewestTestedGame} are supported " +
         $"(save versions {(int)SaveCustomVersion.Version1}–{UnrealVersions.NewestSupportedSave}). " +
         "Older servers (Update 5 to 8) have no HTTPS API: use SSH or upload the save file instead.";
 }
@@ -68,7 +68,7 @@ public static class DedicatedServerClient
             int version = save.SaveVersion;
             check = check with { SaveVersion = version, Build = check.Build ?? save.Build, GameVersion = UnrealVersions.GameVersionName(version), Session = save.Session };
             return version > UnrealVersions.NewestSupportedSave
-                ? check with { Compatibility = "untested", Message = $"The server is newer than this tool (save version {version}, tested up to {UnrealVersions.NewestSupportedSave}). The map may be incomplete." }
+                ? check with { Compatibility = "untested", Message = $"The server is newer than this tool (save version {version}, tested up to {UnrealVersions.NewestSupportedSave}, game version {UnrealVersions.NewestTestedGame}). The map may be incomplete." }
                 : check with { Compatibility = "ok", Message = $"Compatible: game version {check.GameVersion} (save version {version})." };
         }
         catch (Exception ex) when (Translate(ex, source, cancel) is { } problem)

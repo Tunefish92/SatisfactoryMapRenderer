@@ -19,7 +19,7 @@ public sealed class SaveFormatTests
         { 13, 49 },  // 1.0: object flags, lightweight runtime version
         { 14, 51 },  // 1.1: per-level versions, save name
         { 14, 58 },  // 1.2: package versions, UE 5.4+ property tags, new player info handle
-        { 14, 60 },  // 1.2.4: newest supported
+        { 14, 60 },  // 1.2.4 and 1.2.4.1: newest supported
     };
 
     private static SaveGame Load(SyntheticSave synthetic)
