@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.6 – 2026-10-28
 
 * Resource nodes of sessions with game modes (1.2+): with random nodes, resource-rich distributions or another
   node purity, the map shows each node, well and well satellite as the session has it, not as the game places
